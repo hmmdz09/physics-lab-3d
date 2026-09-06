@@ -23,44 +23,15 @@ export class MarkerManager {
   addMarker(id, title, pos, targetData = {}) {
     const group = new THREE.Group();
     group.position.set(pos.x, pos.y, pos.z);
-
-    const diamond = new THREE.Mesh(this._beaconGeo, this._beaconMat);
-    diamond.position.y = 0.22;
-    group.add(diamond);
-
-    const core = new THREE.Mesh(this._coreGeo, this._coreMat);
-    core.position.y = 0.22;
-    group.add(core);
-
-    const ring = new THREE.Mesh(this._ringGeo, this._ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.02;
-    group.add(ring);
-
     group.userData = { id, title, targetData, isMarker: true };
+
     this.scene.add(group);
-    this.markers.push({ group, diamond, core, ring });
-    this.clickableMeshes.push(diamond, core);
+    this.markers.push({ group });
     return group;
   }
 
   update(delta, time) {
-    // Reuse sin value — computed once per frame for all markers
-    const bobBase = time * 2.8;
-    const rotDelta = delta * 1.4;
-
-    this.markers.forEach((m, idx) => {
-      const bob = Math.sin(bobBase + idx * 1.1) * 0.07;
-      m.diamond.position.y = 0.22 + bob;
-      m.core.position.y    = 0.22 + bob;
-      m.diamond.rotation.y += rotDelta;
-    });
-
-    // Ring pulse: update only every 4th frame
-    if (Math.round(time * 60) % 4 === 0) {
-      const s = 1 + Math.sin(time * 3.5) * 0.12;
-      this.markers.forEach(m => m.ring.scale.set(s, s, s));
-    }
+    // No floating meshes to animate
   }
 
   checkRaycast(screenX, screenY, width, height) {

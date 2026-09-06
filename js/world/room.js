@@ -34,21 +34,68 @@ export class RoomBuilder {
     // Back wall Z=+7.5
     add(new THREE.BoxGeometry(8, 3.8, 0.18), wallMat, 0, 1.9,  7.5, 0, 0, 0, true);
 
-    // Right exterior wall X=+4 — split into sill, header, mullions
-    //  Bottom sill
+    // ============ RIGHT EXTERIOR WALL X=+4 & ARCHITECTURAL WINDOWS ============
+    // Bottom wall sill (Y: 0 to 0.9)
     add(new THREE.BoxGeometry(0.18, 0.9, 15), wallMat, 4.0, 0.45, 0, 0, 0, 0, true);
-    //  Top header
-    add(new THREE.BoxGeometry(0.18, 0.7, 15), wallMat, 4.0, 3.45, 0);
-    //  5 Window glass panes
+    // Top wall header (Y: 3.0 to 3.8)
+    add(new THREE.BoxGeometry(0.18, 0.8, 15), wallMat, 4.0, 3.4, 0);
+
+    // Interior windowsill ledge (shelf)
+    const ledgeMat = new THREE.MeshLambertMaterial({ color: 0xe2e8f0 });
+    add(new THREE.BoxGeometry(0.26, 0.04, 15), ledgeMat, 3.92, 0.92, 0);
+
+    // 5 Architectural Windows with aluminum frames & double-sided sky-tinted glass
+    const frameMat = new THREE.MeshLambertMaterial({ color: 0x1e293b }); // Dark charcoal aluminum
+    const winGlassMat = new THREE.MeshBasicMaterial({
+      color: 0xbae6fd, transparent: true, opacity: 0.35, side: THREE.DoubleSide
+    });
+
     for (let i = 0; i < 5; i++) {
       const zPos = -5.0 + i * 2.5;
-      add(new THREE.PlaneGeometry(2.0, 2.1), glassMat, 3.98, 2.0, zPos, 0, -Math.PI / 2);
+
+      // Lower main glass pane (Y: 0.95 to 2.45)
+      add(new THREE.PlaneGeometry(2.0, 1.45), winGlassMat, 3.99, 1.675, zPos, 0, -Math.PI / 2);
+
+      // Upper ventilation hopper window (Permendikbud 24/2007: sirkulasi udara alami)
+      add(new THREE.PlaneGeometry(2.0, 0.40), winGlassMat, 3.99, 2.75, zPos, 0, -Math.PI / 2);
+
+      // Window Frames
+      add(new THREE.BoxGeometry(0.08, 0.05, 2.08), frameMat, 4.0, 2.98, zPos); // Top
+      add(new THREE.BoxGeometry(0.08, 0.05, 2.08), frameMat, 4.0, 0.92, zPos); // Bottom
+      add(new THREE.BoxGeometry(0.08, 0.05, 2.08), frameMat, 4.0, 2.45, zPos); // Transom divider
+      add(new THREE.BoxGeometry(0.08, 2.1, 0.05), frameMat, 4.0, 1.95, zPos - 1.02); // Left jamb
+      add(new THREE.BoxGeometry(0.08, 2.1, 0.05), frameMat, 4.0, 1.95, zPos + 1.02); // Right jamb
+      add(new THREE.BoxGeometry(0.06, 1.5, 0.04), frameMat, 4.0, 1.70, zPos);        // Center sash
     }
-    //  Vertical mullion strips between windows
+
+    // Vertical wall piers between windows
     for (let i = 0; i < 6; i++) {
-      const zPos = -5.0 + i * 2.5 - 1.0;
-      add(new THREE.BoxGeometry(0.18, 2.2, 0.08), wallMat, 4.0, 2.0, zPos);
+      const zPos = -5.0 + i * 2.5 - 1.25;
+      add(new THREE.BoxGeometry(0.20, 2.1, 0.42), wallMat, 4.0, 1.95, zPos, 0, 0, 0, true);
     }
+
+    // ============ OUTDOOR SCENERY (RIGHT WINDOW VISTA) ============
+    // Outdoor manicured school lawn
+    const lawnMat = new THREE.MeshLambertMaterial({ color: 0x1f5424 });
+    add(new THREE.PlaneGeometry(16, 26), lawnMat, 12.0, -0.01, 0, -Math.PI / 2, 0, 0);
+
+    // Outdoor paved walkway along windows
+    const paveMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
+    add(new THREE.PlaneGeometry(1.6, 22), paveMat, 4.9, 0.005, 0, -Math.PI / 2, 0, 0);
+
+    // Decorative landscape garden hedges along the walkway
+    const hedgeMat = new THREE.MeshLambertMaterial({ color: 0x166534 });
+    add(new THREE.BoxGeometry(0.55, 0.75, 18), hedgeMat, 6.0, 0.375, 0);
+
+    // Outdoor daylight sky panorama backdrop plane
+    const skyTex = this._makeOutdoorSkyTexture();
+    const skyPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(36, 16),
+      new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.DoubleSide })
+    );
+    skyPlane.position.set(18.0, 6.0, 0);
+    skyPlane.rotation.y = -Math.PI / 2;
+    roomGroup.add(skyPlane);
 
     // Left interior partition wall X=-4 (split for prep room doorway Z: -2.5 to +2.5)
     add(new THREE.BoxGeometry(0.18, 3.8, 5.0), wallMat, -4.0, 1.9, -5.0, 0, 0, 0, true);
@@ -68,6 +115,9 @@ export class RoomBuilder {
 
     // ============ WHITEBOARD ============
     this.buildWhiteboard(roomGroup);
+
+    // ============ PROSEDUR K3 WALL BOARD (TULISAN K3 DI DINDING) ============
+    this.buildK3WallBoard(roomGroup);
 
     // ============ CEILING BEAMS ============
     const beamGeo = new THREE.BoxGeometry(8, 0.22, 0.12);
@@ -218,5 +268,180 @@ export class RoomBuilder {
     );
     frame.position.set(0, 2.0, -7.39);
     group.add(frame);
+  }
+
+  buildK3WallBoard(group) {
+    const tex = this._makeK3BoardTexture();
+    const board = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.4, 1.9),
+      new THREE.MeshBasicMaterial({ map: tex })
+    );
+    board.position.set(-3.88, 2.0, 5.0);
+    board.rotation.y = Math.PI / 2;
+    board.userData = {
+      id: 'k3_wall',
+      type: 'safety',
+      name: 'Papan SOP & Prosedur K3 Laboratorium Fisika',
+      category: 'Standar Keselamatan Wajib Dinding',
+      description: 'Pedoman K3 resmi: Kewajiban jas lab & APD, tata tertib praktikum, pencegahan sengatan listrik, serta SOP tanggap darurat E-Stop, APAR, dan wastafel cuci tangan.',
+      regulationCitation: 'Permendikbud No. 24/2007 (Kesehatan & Keselamatan Kerja Lab Fisika).'
+    };
+    group.add(board);
+
+    // Beveled frame for K3 wall board
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(0.04, 2.0, 3.5),
+      new THREE.MeshLambertMaterial({ color: 0x1e293b })
+    );
+    frame.position.set(-3.91, 2.0, 5.0);
+    group.add(frame);
+  }
+
+  _makeK3BoardTexture() {
+    const c = document.createElement('canvas');
+    c.width = 1024; c.height = 576;
+    const ctx = c.getContext('2d');
+
+    // Deep slate background
+    ctx.fillStyle = '#0a1224';
+    ctx.fillRect(0, 0, 1024, 576);
+
+    // Header safety green bar
+    ctx.fillStyle = '#065f46';
+    ctx.fillRect(0, 0, 1024, 76);
+
+    // Border
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(4, 4, 1016, 568);
+
+    // Title
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 26px sans-serif';
+    ctx.fillText('🛡️ STANDAR OPERASIONAL PROSEDUR (SOP) K3 LAB FISIKA', 24, 46);
+
+    // Subtitle
+    ctx.fillStyle = '#6ee7b7';
+    ctx.font = 'bold 13px monospace';
+    ctx.fillText('PEDOMAN KESELAMATAN KERJA & PROTOKOL TANGGAP DARURAT · PERMENDIKBUD NO. 24/2007', 26, 68);
+
+    const drawCard = (x, y, w, h, title, titleCol, items) => {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = titleCol;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+
+      // Card header
+      ctx.fillStyle = titleCol;
+      ctx.fillRect(x, y, w, 32);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText(title, x + 12, y + 22);
+
+      // Card items
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '12px sans-serif';
+      let textY = y + 54;
+      items.forEach(item => {
+        const words = item.split(' ');
+        let line = '';
+        words.forEach(w => {
+          const testLine = line + (line ? ' ' : '') + w;
+          if (ctx.measureText(testLine).width > w - 24) {
+            ctx.fillText(line, x + 12, textY);
+            line = '  ' + w;
+            textY += 18;
+          } else {
+            line = testLine;
+          }
+        });
+        if (line) {
+          ctx.fillText(line, x + 12, textY);
+          textY += 21;
+        }
+      });
+    };
+
+    // Col 1: APD & Tata Tertib
+    drawCard(20, 94, 310, 426, '1. TATA TERTIB & APD WAJIB', '#0284c7', [
+      '• Wajib memakai Jas Laboratorium terkancing rapi.',
+      '• Gunakan Sepatu Tertutup (dilarang sandal).',
+      '• Dilarang membawa makanan & minuman ke lab.',
+      '• Dilarang berlari atau bercanda di area praktikum.',
+      '• Tas dan jaket disimpan di ruang persiapan.',
+      '• Pelindung mata wajib saat percobaan optik / laser.',
+      '• Patuhi instruksi Guru & Pranata Laboratorium.'
+    ]);
+
+    // Col 2: Kelistrikan & Alat
+    drawCard(348, 94, 328, 426, '2. KELISTRIKAN & ALAT PRAKTIKUM', '#d97706', [
+      '• Pastikan CATU DAYA OFF sebelum merangkai kabel.',
+      '• Periksa batas ukur multimeter, amperemeter, & osiloskop.',
+      '• DILARANG menyentuh terminal kabel dengan tangan basah.',
+      '• Rapikan kabel jumper agar tidak tersandung siswa lain.',
+      '• Kalibrasi alat ukur sebelum mengambil data praktikum.',
+      '• Matikan instrumen segera bila tercium bau gosong.',
+      '• Instalasi daya meja dilindungi MCB & tombol E-Stop.'
+    ]);
+
+    // Col 3: Tanggap Darurat
+    drawCard(694, 94, 310, 426, '3. TANGGAP DARURAT (EMERGENCY)', '#dc2626', [
+      '• SENGATAN LISTRIK: Tekan tombol E-STOP merah seketika.',
+      '• KEBAKARAN: Gunakan APAR Serbuk Kimia ABC 6kg di pintu.',
+      '• IRITASI / KIMIA: Segera bilas di WASTAFEL CUCI TANGAN.',
+      '• CEDERA / LUKA: Hubungi P3K lengkap di dekat pintu keluar.',
+      '• EVAKUASI: Lewati pintu darurat (EXIT) ke titik kumpul.',
+      '• Tetap tenang dan jangan berdesak-desakan saat evakuasi.'
+    ]);
+
+    // Footer
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(20, 528, 984, 36);
+    ctx.fillStyle = '#34d399';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('UTAMAKAN KESELAMATAN KERJA (ZERO ACCIDENT) — LABORATORIUM FISIKA KEMENDIKBUDRISTEK RI', 512, 551);
+
+    return new THREE.CanvasTexture(c);
+  }
+
+  _makeOutdoorSkyTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 256;
+    const ctx = c.getContext('2d');
+
+    // Natural daylight sky gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, '#38bdf8');   // Daylight bright blue
+    grad.addColorStop(0.5, '#7dd3fc'); // Sky cyan
+    grad.addColorStop(0.85, '#bae6fd'); // Near horizon bright
+    grad.addColorStop(1, '#fef08a');   // Soft sunlight glow
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 256);
+
+    // Sun glow
+    const sunGrad = ctx.createRadialGradient(380, 80, 10, 380, 80, 120);
+    sunGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+    sunGrad.addColorStop(0.3, 'rgba(254, 240, 138, 0.6)');
+    sunGrad.addColorStop(1, 'rgba(254, 240, 138, 0)');
+    ctx.fillStyle = sunGrad;
+    ctx.beginPath();
+    ctx.arc(380, 80, 120, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Subtle clouds
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    const drawCloud = (cx, cy, r) => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.arc(cx + r * 0.7, cy - r * 0.2, r * 0.8, 0, Math.PI * 2);
+      ctx.arc(cx + r * 1.4, cy, r * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    drawCloud(120, 110, 28);
+    drawCloud(260, 140, 34);
+
+    return new THREE.CanvasTexture(c);
   }
 }

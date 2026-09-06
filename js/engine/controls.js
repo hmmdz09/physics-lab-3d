@@ -48,6 +48,8 @@ export class ControllerManager {
     this.teleportEndLook = new THREE.Vector2();
     this.teleportProgress = 1;
 
+    this.mouseButton = 0;
+
     this.initEvents();
   }
 
@@ -61,6 +63,14 @@ export class ControllerManager {
     window.addEventListener('mouseup', () => this.onMouseUp());
     window.addEventListener('mousemove', (e) => this.onMouseMove(e));
 
+    // Mouse wheel (Orbit zoom in / out)
+    this.domElement.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
+
+    // Prevent context menu on right click when in orbit mode
+    this.domElement.addEventListener('contextmenu', (e) => {
+      if (this.mode === 'orbit') e.preventDefault();
+    });
+
     // Pointer lock change
     document.addEventListener('pointerlockchange', () => {
       this.isPointerLocked = document.pointerLockElement === this.domElement;
@@ -70,35 +80,68 @@ export class ControllerManager {
       }
     });
 
-    // Touch support for mobile
+    // Touch support for mobile (drag to look / rotate, 2-finger pinch to zoom)
     let touchStartX = 0;
     let touchStartY = 0;
+    let touchStartDist = 0;
+
     this.domElement.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) {
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         this.isDragging = true;
+      } else if (e.touches.length === 2 && this.mode === 'orbit') {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchStartDist = Math.hypot(dx, dy);
       }
     }, { passive: true });
 
     this.domElement.addEventListener('touchmove', (e) => {
-      if (!this.isDragging || e.touches.length !== 1) return;
-      const deltaX = e.touches[0].clientX - touchStartX;
-      const deltaY = e.touches[0].clientY - touchStartY;
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
+      if (e.touches.length === 1 && this.isDragging) {
+        const deltaX = e.touches[0].clientX - touchStartX;
+        const deltaY = e.touches[0].clientY - touchStartY;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
 
-      if (this.mode === 'walk') {
-        this.euler.y -= deltaX * 0.004;
-        this.euler.x -= deltaY * 0.004;
-        this.euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, this.euler.x));
-        this.camera.quaternion.setFromEuler(this.euler);
+        if (this.mode === 'walk') {
+          this.euler.y -= deltaX * 0.004;
+          this.euler.x -= deltaY * 0.004;
+          this.euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, this.euler.x));
+          this.camera.quaternion.setFromEuler(this.euler);
+        } else if (this.mode === 'orbit') {
+          this.orbitTheta -= deltaX * 0.006;
+          this.orbitPhi -= deltaY * 0.006;
+          this.orbitPhi = Math.max(0.1, Math.min(Math.PI / 2.1, this.orbitPhi));
+          this.updateOrbitCamera();
+        }
+      } else if (e.touches.length === 2 && this.mode === 'orbit') {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        if (touchStartDist > 0) {
+          const deltaDist = touchStartDist - dist;
+          this.orbitRadius = Math.max(3.0, Math.min(36.0, this.orbitRadius + deltaDist * 0.04));
+          this.updateOrbitCamera();
+        }
+        touchStartDist = dist;
       }
     }, { passive: true });
 
     this.domElement.addEventListener('touchend', () => {
       this.isDragging = false;
+      touchStartDist = 0;
     });
+  }
+
+  onWheel(e) {
+    if (this.mode === 'orbit') {
+      e.preventDefault();
+      // Scroll down (positive deltaY) zooms out, scroll up (negative deltaY) zooms in
+      const zoomStep = e.deltaY * 0.015;
+      this.orbitRadius = Math.max(2.5, Math.min(36.0, this.orbitRadius + zoomStep));
+      this.updateOrbitCamera();
+    }
   }
 
   requestLock() {
@@ -109,11 +152,12 @@ export class ControllerManager {
 
   onMouseDown(e) {
     if (e.target !== this.domElement) return;
-    if (e.button === 0) {
-      if (this.mode === 'walk' && !this.isPointerLocked) {
+    if (e.button === 0 || e.button === 1 || e.button === 2) {
+      if (e.button === 0 && this.mode === 'walk' && !this.isPointerLocked) {
         this.requestLock();
       }
       this.isDragging = true;
+      this.mouseButton = e.button;
       this.previousMousePosition = { x: e.clientX, y: e.clientY };
     }
   }
@@ -129,7 +173,7 @@ export class ControllerManager {
         this.euler.x -= e.movementY * 0.0022;
         this.euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, this.euler.x));
         this.camera.quaternion.setFromEuler(this.euler);
-      } else if (this.isDragging) {
+      } else if (this.isDragging && this.mouseButton === 0) {
         const deltaX = e.clientX - this.previousMousePosition.x;
         const deltaY = e.clientY - this.previousMousePosition.y;
         this.euler.y -= deltaX * 0.003;
@@ -141,9 +185,26 @@ export class ControllerManager {
     } else if (this.mode === 'orbit' && this.isDragging) {
       const deltaX = e.clientX - this.previousMousePosition.x;
       const deltaY = e.clientY - this.previousMousePosition.y;
-      this.orbitTheta -= deltaX * 0.006;
-      this.orbitPhi -= deltaY * 0.006;
-      this.orbitPhi = Math.max(0.1, Math.min(Math.PI / 2.1, this.orbitPhi));
+
+      if (this.mouseButton === 0) {
+        // Left click: Rotate orbit
+        this.orbitTheta -= deltaX * 0.006;
+        this.orbitPhi -= deltaY * 0.006;
+        this.orbitPhi = Math.max(0.08, Math.min(Math.PI / 2.05, this.orbitPhi));
+      } else if (this.mouseButton === 1 || this.mouseButton === 2) {
+        // Right click or middle click: Pan target
+        const panFactor = this.orbitRadius * 0.0018;
+        const sinT = Math.sin(this.orbitTheta);
+        const cosT = Math.cos(this.orbitTheta);
+
+        // Target panning along camera view plane
+        this.orbitTarget.x += (-cosT * deltaX - sinT * deltaY * 0.5) * panFactor;
+        this.orbitTarget.z += (sinT * deltaX - cosT * deltaY * 0.5) * panFactor;
+        // Clamp orbit target inside reasonable boundaries
+        this.orbitTarget.x = Math.max(-10, Math.min(10, this.orbitTarget.x));
+        this.orbitTarget.z = Math.max(-10, Math.min(10, this.orbitTarget.z));
+      }
+
       this.previousMousePosition = { x: e.clientX, y: e.clientY };
       this.updateOrbitCamera();
     }
@@ -202,21 +263,39 @@ export class ControllerManager {
   setMode(mode) {
     this.mode = mode;
     const crosshair = document.getElementById('crosshair');
+    const keyHints = document.getElementById('key-hints');
 
     if (mode === 'walk') {
       if (crosshair) crosshair.style.display = 'block';
       this.camera.position.set(0, this.eyeHeight, 5);
       this.euler.set(0, 0, 0);
       this.camera.quaternion.setFromEuler(this.euler);
+      if (keyHints) {
+        keyHints.innerHTML = `
+          <div class="kh-row"><kbd>W A S D</kbd><span>Gerak</span></div>
+          <div class="kh-row"><kbd>Mouse</kbd><span>Lihat 360°</span></div>
+          <div class="kh-row"><kbd>Shift</kbd><span>Sprint</span></div>
+          <div class="kh-row"><kbd>Klik</kbd><span>Kunci Kursor</span></div>
+        `;
+      }
     } else if (mode === 'orbit') {
       if (document.pointerLockElement) {
         document.exitPointerLock();
       }
       if (crosshair) crosshair.style.display = 'none';
-      this.orbitRadius = 22;
+      this.orbitRadius = 16;
       this.orbitTheta = Math.PI / 4;
-      this.orbitPhi = Math.PI / 3.2;
+      this.orbitPhi = Math.PI / 3.4;
+      this.orbitTarget.set(0, 1.2, 0);
       this.updateOrbitCamera();
+      if (keyHints) {
+        keyHints.innerHTML = `
+          <div class="kh-row"><kbd>Scroll / W S</kbd><span>Zoom Maju/Jauh</span></div>
+          <div class="kh-row"><kbd>Drag Kiri / A D</kbd><span>Putar 360°</span></div>
+          <div class="kh-row"><kbd>Drag Kanan</kbd><span>Geser (Pan)</span></div>
+          <div class="kh-row"><kbd>Pinch</kbd><span>Zoom Layar</span></div>
+        `;
+      }
     }
   }
 
@@ -291,6 +370,31 @@ export class ControllerManager {
       this.euler.x = THREE.MathUtils.lerp(this.teleportStartLook.x, this.teleportEndLook.x, t);
       this.euler.y = THREE.MathUtils.lerp(this.teleportStartLook.y, this.teleportEndLook.y, t);
       this.camera.quaternion.setFromEuler(this.euler);
+      return;
+    }
+
+    if (this.mode === 'orbit') {
+      let changed = false;
+      const zoomSpeed = 12.0 * delta;
+      const rotSpeed = 1.8 * delta;
+
+      if (this.keys.forward) {
+        this.orbitRadius = Math.max(2.5, this.orbitRadius - zoomSpeed);
+        changed = true;
+      }
+      if (this.keys.backward) {
+        this.orbitRadius = Math.min(36.0, this.orbitRadius + zoomSpeed);
+        changed = true;
+      }
+      if (this.keys.left) {
+        this.orbitTheta -= rotSpeed;
+        changed = true;
+      }
+      if (this.keys.right) {
+        this.orbitTheta += rotSpeed;
+        changed = true;
+      }
+      if (changed) this.updateOrbitCamera();
       return;
     }
 

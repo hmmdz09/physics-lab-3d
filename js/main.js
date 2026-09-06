@@ -46,7 +46,10 @@ class PhysicsLabApp {
       this.equipment = new EquipmentBuilder(this.engine.scene);
       this.equipment.build();
     } catch(e) { console.warn('Equipment:', e); }
-    try { new SafetyBuilder(this.engine.scene).build(); } catch(e) { console.warn('Safety:', e); }
+    try {
+      this.safety = new SafetyBuilder(this.engine.scene, this.controls);
+      this.safety.build();
+    } catch(e) { console.warn('Safety:', e); }
 
     // Markers
     this.markers = new MarkerManager(this.engine.scene, this.engine.camera);
@@ -79,6 +82,8 @@ class PhysicsLabApp {
     add('optics',      'Bangku Optik & Laser Prisma',{x:-2,  y:1.12,z:3.8 }, 'Hukum Snellius · Dispersi cahaya prisma · Sudut deviasi minimum · Laser merah', '🌈');
     add('thermo',      'Kalorimeter Joule',          {x:2,    y:1.12,z:3.8 }, 'Asas Black · Kalor jenis tembaga/aluminium/kuningan · Tara kalor mekanik', '🌡️');
     add('prep',        'Ruang Persiapan Guru',       {x:-7.5, y:1.12,z:0  }, '24 m² · 4 lemari kaca terkunci · Kit Mekanika, Optik, Listrik, Termofisika', '🚪');
+    add('wash',        'Wastafel Cuci Tangan (3 Keran)', {x:-2.4, y:1.1, z:6.8}, 'Stasiun cuci tangan luas 2.6m · 3 wastafel stainless · keran angsa · cermin dinding · sabun antiseptik', '🚰');
+    add('k3',          'Papan SOP & Prosedur K3 Lab',    {x:-3.8, y:1.8, z:5.0}, 'Pedoman K3 resmi di dinding · Aturan jas lab & APD · Pencegahan sengatan listrik · Penanganan darurat', '🛡️');
     add('apar',        'Pos K3 & APAR ABC 6kg',      {x:3.2,  y:1.4, z:7.0}, 'APAR kimia kering ABC · P3K · Eye Wash · E-Stop master · Standar Kemendikbud', '🧯');
     add('estop',       'Master Emergency Power Off', {x:3.2,  y:1.5, z:-7.2},'Tombol jamur merah · Putus daya ke 10 meja (50 siswa) seketika · Tipe NC', '⚡');
   }
@@ -133,6 +138,8 @@ class PhysicsLabApp {
       table6:      {x:0.5,  z:2.5,  y:Math.PI/2},
       optics:      {x:-0.7, z:3.8,  y:-Math.PI/2},
       oscilloscope:{x:-0.7, z:1.9,  y:-Math.PI/2},
+      wash:        {x:-2.4, z:5.6,  y:0},
+      k3:          {x:-2.4, z:5.0,  y:-Math.PI/2},
       prep:        {x:-7.0, z:0,    y:-Math.PI/2},
       safety:      {x:2.5,  z:6.5,  y:0},
     };
@@ -208,6 +215,18 @@ class PhysicsLabApp {
     // Demo table
     ctx.fillStyle = 'rgba(5,150,105,0.8)';
     ctx.fillRect(ox-1.4*sc, oy-6.5*sc, 2.8*sc, sc);
+
+    // Large Wash Station (back-left)
+    ctx.fillStyle = '#0284c7';
+    ctx.fillRect(ox - 3.7*sc, oy + 6.6*sc, 2.6*sc, 0.65*sc);
+
+    // K3 Wall Board on left wall
+    ctx.fillStyle = '#10b981';
+    ctx.fillRect(ox - 4.15*sc, oy + 3.4*sc, 0.25*sc, 3.2*sc);
+
+    // Right Windows on right exterior wall
+    ctx.fillStyle = 'rgba(56,189,248,0.7)';
+    ctx.fillRect(ox + 3.9*sc, oy - 6.25*sc, 0.25*sc, 12.5*sc);
 
     // APAR
     ctx.fillStyle = '#ef4444';
