@@ -1,102 +1,176 @@
 import * as THREE from 'three';
 
+// ---------------------------------------------------------------
+// Shared geometry & material pools to avoid redundant GPU uploads
+// ---------------------------------------------------------------
+const _GEO = {
+  box1: new THREE.BoxGeometry(1, 1, 1),          // scaled per use
+  cyl8: new THREE.CylinderGeometry(1, 1, 1, 8),  // low-poly 8-seg
+  cyl12: new THREE.CylinderGeometry(1, 1, 1, 12),
+  plane: new THREE.PlaneGeometry(1, 1)
+};
+
+function box(w, h, d) { return new THREE.BoxGeometry(w, h, d); }
+function cyl(rt, rb, h, seg = 8) { return new THREE.CylinderGeometry(rt, rb, h, seg); }
+
+// Build a MeshBasicMaterial (zero lighting cost)
+function basic(color) {
+  return new THREE.MeshBasicMaterial({ color });
+}
+
+// Build cheap flat-shaded MeshLambertMaterial
+function lamb(color, roughness = 0.7) {
+  return new THREE.MeshLambertMaterial({ color });
+}
+
+function mesh(geo, mat, castShadow = false, receiveShadow = false) {
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = castShadow;
+  m.receiveShadow = receiveShadow;
+  return m;
+}
+
+// ---------------------------------------------------------------
 export class FurnitureBuilder {
   constructor(scene, controls) {
     this.scene = scene;
     this.controls = controls;
-    this.materials = {};
-    this.tables = [];
-    this.initMaterials();
-  }
 
-  initMaterials() {
-    // Lab bench top: Anti-chemical epoxy black/charcoal
-    this.materials.benchTop = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.2,
-      metalness: 0.1
-    });
-
-    // Steel leg frame
-    this.materials.steelLeg = new THREE.MeshStandardMaterial({
-      color: 0x475569,
-      metalness: 0.8,
-      roughness: 0.3
-    });
-
-    // Stainless steel sink
-    this.materials.sink = new THREE.MeshStandardMaterial({
-      color: 0x94a3b8,
-      metalness: 0.9,
-      roughness: 0.2
-    });
-
-    // Chrome faucet
-    this.materials.chrome = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
-      metalness: 0.95,
-      roughness: 0.1
-    });
-
-    // Electrical console
-    this.materials.powerConsole = new THREE.MeshStandardMaterial({
-      color: 0x0f172a,
-      roughness: 0.4
-    });
-
-    // Stool chair seat (Teak wood / polymer)
-    this.materials.chairSeat = new THREE.MeshStandardMaterial({
-      color: 0x3b82f6, // Institutional blue lab stool
-      roughness: 0.5,
-      metalness: 0.1
-    });
-
-    // Glass cabinet material
-    this.materials.cabinetWood = new THREE.MeshStandardMaterial({
-      color: 0x334155,
-      roughness: 0.6
-    });
-
-    this.materials.cabinetGlass = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      transmission: 0.85,
-      opacity: 0.5,
-      transparent: true,
-      roughness: 0.1
-    });
+    // Shared materials (avoid creating duplicate GPU buffers)
+    this.mat = {
+      benchTop:    lamb(0x1e293b),
+      steel:       lamb(0x475569),
+      sink:        lamb(0x94a3b8),
+      chrome:      lamb(0xe2e8f0),
+      console:     lamb(0x0f172a),
+      chairSeat:   lamb(0x2563eb),
+      cabinet:     lamb(0x334155),
+      cabGlass:    new THREE.MeshBasicMaterial({ color: 0x9dceff, transparent: true, opacity: 0.35 }),
+      tableBadge:  null, // set per table via canvas
+    };
   }
 
   build() {
     const furnitureGroup = new THREE.Group();
 
-    // 1. BUILD 10 ISLAND PRAKTIKUM TABLES (FOR 40-50 STUDENTS)
-    // Arranged in 2 columns: Left Column (X = -2.0), Right Column (X = +2.0)
-    // 5 Rows along Z: [-3.8, -1.9, 0.0, +1.9, +3.8]
     const xColumns = [-2.0, 2.0];
-    const zRows = [-3.8, -1.9, 0.0, 1.9, 3.8];
+    const zRows    = [-3.8, -1.9, 0.0, 1.9, 3.8];
 
-    let tableIndex = 1;
-    for (let c = 0; c < xColumns.length; c++) {
-      for (let r = 0; r < zRows.length; r++) {
-        const xPos = xColumns[c];
-        const zPos = zRows[r];
-        const table = this.createStudentTable(tableIndex, xPos, zPos);
-        furnitureGroup.add(table);
+    // -----------------------------------------------------------
+    // 1. 10 Student Island Tables – using InstancedMesh for bodies
+    // -----------------------------------------------------------
+    // Table top (all 10 tops as one InstancedMesh)
+    const topGeo = box(2.0, 0.05, 1.0);
+    const topInst = new THREE.InstancedMesh(topGeo, this.mat.benchTop, 10);
+    topInst.castShadow = true;
+    topInst.receiveShadow = true;
 
-        // Register table for collision in walk mode
-        this.controls.addCollisionBox(xPos - 1.05, xPos + 1.05, zPos - 0.58, zPos + 0.58);
-        this.tables.push({ index: tableIndex, x: xPos, z: zPos, group: table });
+    const dummy = new THREE.Object3D();
+    let idx = 0;
+    for (let c = 0; c < 2; c++) {
+      for (let r = 0; r < 5; r++) {
+        dummy.position.set(xColumns[c], 0.775, zRows[r]);
+        dummy.updateMatrix();
+        topInst.setMatrixAt(idx++, dummy.matrix);
+      }
+    }
+    topInst.instanceMatrix.needsUpdate = true;
+    furnitureGroup.add(topInst);
 
-        tableIndex++;
+    // Table legs (40 legs as one InstancedMesh)
+    const legGeo = cyl(0.03, 0.03, 0.77);
+    const legInst = new THREE.InstancedMesh(legGeo, this.mat.steel, 40);
+    idx = 0;
+    const legOffsets = [[-0.92, -0.42], [0.92, -0.42], [-0.92, 0.42], [0.92, 0.42]];
+    for (let c = 0; c < 2; c++) {
+      for (let r = 0; r < 5; r++) {
+        for (const [lx, lz] of legOffsets) {
+          dummy.position.set(xColumns[c] + lx, 0.385, zRows[r] + lz);
+          dummy.updateMatrix();
+          legInst.setMatrixAt(idx++, dummy.matrix);
+        }
+      }
+    }
+    legInst.instanceMatrix.needsUpdate = true;
+    furnitureGroup.add(legInst);
+
+    // Sinks (10) as InstancedMesh
+    const sinkGeo = box(0.35, 0.12, 0.28);
+    const sinkInst = new THREE.InstancedMesh(sinkGeo, this.mat.sink, 10);
+    idx = 0;
+    for (let c = 0; c < 2; c++) {
+      for (let r = 0; r < 5; r++) {
+        dummy.position.set(xColumns[c], 0.82, zRows[r]);
+        dummy.updateMatrix();
+        sinkInst.setMatrixAt(idx++, dummy.matrix);
+      }
+    }
+    sinkInst.instanceMatrix.needsUpdate = true;
+    furnitureGroup.add(sinkInst);
+
+    // Power consoles (10) InstancedMesh
+    const consoleGeo = box(0.38, 0.10, 0.13);
+    const consoleInst = new THREE.InstancedMesh(consoleGeo, this.mat.console, 10);
+    idx = 0;
+    for (let c = 0; c < 2; c++) {
+      for (let r = 0; r < 5; r++) {
+        dummy.position.set(xColumns[c], 0.855, zRows[r] - 0.14);
+        dummy.updateMatrix();
+        consoleInst.setMatrixAt(idx++, dummy.matrix);
+      }
+    }
+    consoleInst.instanceMatrix.needsUpdate = true;
+    furnitureGroup.add(consoleInst);
+
+    // LED indicators (10) – MeshBasicMaterial, zero cost
+    const ledGeo = new THREE.SphereGeometry(0.013, 6, 6);
+    const ledMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+    const ledInst = new THREE.InstancedMesh(ledGeo, ledMat, 10);
+    idx = 0;
+    for (let c = 0; c < 2; c++) {
+      for (let r = 0; r < 5; r++) {
+        dummy.position.set(xColumns[c] + 0.11, 0.875, zRows[r] - 0.073);
+        dummy.updateMatrix();
+        ledInst.setMatrixAt(idx++, dummy.matrix);
+      }
+    }
+    ledInst.instanceMatrix.needsUpdate = true;
+    furnitureGroup.add(ledInst);
+
+    // -----------------------------------------------------------
+    // 2. 50 Stool Chairs — InstancedMesh (seats + shafts)
+    // -----------------------------------------------------------
+    this.buildStools(furnitureGroup, xColumns, zRows);
+
+    // -----------------------------------------------------------
+    // 3. Individual labels (only for first and last table)
+    //    Avoid creating 10 canvas textures — just 2
+    // -----------------------------------------------------------
+    this.addTableLabel(furnitureGroup, xColumns[0], zRows[0], 0.51, '01');
+    this.addTableLabel(furnitureGroup, xColumns[1], zRows[4], 0.51, '10');
+
+    // -----------------------------------------------------------
+    // 4. Collision boxes for all 10 tables
+    // -----------------------------------------------------------
+    for (let c = 0; c < 2; c++) {
+      for (let r = 0; r < 5; r++) {
+        this.controls.addCollisionBox(
+          xColumns[c] - 1.05, xColumns[c] + 1.05,
+          zRows[r] - 0.58, zRows[r] + 0.58
+        );
       }
     }
 
-    // 2. TEACHER DEMONSTRATION TABLE & PODIUM (Z = -5.8)
+    // -----------------------------------------------------------
+    // 5. Teacher Demonstration Station
+    // -----------------------------------------------------------
     const demoStation = this.createTeacherDemoStation();
     furnitureGroup.add(demoStation);
     this.controls.addCollisionBox(-2.3, 2.3, -6.6, -5.0);
 
-    // 3. PREPARATION ROOM FURNITURE
+    // -----------------------------------------------------------
+    // 6. Preparation Room furniture (simplified)
+    // -----------------------------------------------------------
     const prepFurniture = this.createPreparationFurniture();
     furnitureGroup.add(prepFurniture);
 
@@ -104,297 +178,155 @@ export class FurnitureBuilder {
     return furnitureGroup;
   }
 
-  createStudentTable(index, x, z) {
-    const group = new THREE.Group();
-    group.position.set(x, 0, z);
+  buildStools(group, xColumns, zRows) {
+    // 50 seats — InstancedMesh
+    const seatGeo = cyl(0.17, 0.17, 0.03, 10);
+    const seatInst = new THREE.InstancedMesh(seatGeo, this.mat.chairSeat, 50);
 
-    // Dimensions: Length 2.0m (along X), Width 1.0m (along Z), Height 0.8m
-    const tableLength = 2.0;
-    const tableWidth = 1.0;
-    const tableHeight = 0.8;
-    const topThickness = 0.05;
+    // 50 shafts — InstancedMesh
+    const shaftGeo = cyl(0.018, 0.018, 0.50, 6);
+    const shaftInst = new THREE.InstancedMesh(shaftGeo, this.mat.steel, 50);
 
-    // Tabletop
-    const topGeo = new THREE.BoxGeometry(tableLength, topThickness, tableWidth);
-    const topMesh = new THREE.Mesh(topGeo, this.materials.benchTop);
-    topMesh.position.y = tableHeight - topThickness / 2;
-    topMesh.castShadow = true;
-    topMesh.receiveShadow = true;
-    group.add(topMesh);
-
-    // 4 Steel Legs
-    const legRadius = 0.03;
-    const legGeo = new THREE.CylinderGeometry(legRadius, legRadius, tableHeight - topThickness);
-    const legPositions = [
-      { lx: -tableLength / 2 + 0.08, lz: -tableWidth / 2 + 0.08 },
-      { lx:  tableLength / 2 - 0.08, lz: -tableWidth / 2 + 0.08 },
-      { lx: -tableLength / 2 + 0.08, lz:  tableWidth / 2 - 0.08 },
-      { lx:  tableLength / 2 - 0.08, lz:  tableWidth / 2 - 0.08 }
+    const dummy = new THREE.Object3D();
+    const stoolOffsets = [
+      { sx: -0.5, sz: -0.65 }, { sx: 0.5, sz: -0.65 },
+      { sx: -0.5, sz:  0.65 }, { sx: 0.5, sz:  0.65 },
+      { sx: 0,   sz:  0 } // center aisle seat
     ];
 
-    legPositions.forEach(p => {
-      const leg = new THREE.Mesh(legGeo, this.materials.steelLeg);
-      leg.position.set(p.lx, (tableHeight - topThickness) / 2, p.lz);
-      leg.castShadow = true;
-      group.add(leg);
-    });
+    let si = 0;
+    for (let c = 0; c < 2; c++) {
+      for (let r = 0; r < 5; r++) {
+        // Override 5th stool: outer aisle direction
+        const offsets = [
+          { sx: -0.5, sz: -0.65 }, { sx: 0.5, sz: -0.65 },
+          { sx: -0.5, sz:  0.65 }, { sx: 0.5, sz:  0.65 },
+          { sx: xColumns[c] > 0 ? 1.1 : -1.1, sz: 0 }
+        ];
+        for (const o of offsets) {
+          const wx = xColumns[c] + o.sx;
+          const wz = zRows[r] + o.sz;
+          dummy.position.set(wx, 0.515, wz);
+          dummy.updateMatrix();
+          seatInst.setMatrixAt(si, dummy.matrix);
 
-    // Central Integrated Utility Console (Sink + Power Box)
-    // Sink at center
-    const sinkGeo = new THREE.BoxGeometry(0.35, 0.15, 0.3);
-    const sinkMesh = new THREE.Mesh(sinkGeo, this.materials.sink);
-    sinkMesh.position.set(0, tableHeight - 0.07, 0);
-    group.add(sinkMesh);
-
-    // Gooseneck Faucet
-    const faucetGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.22);
-    const faucet = new THREE.Mesh(faucetGeo, this.materials.chrome);
-    faucet.position.set(0, tableHeight + 0.1, 0.12);
-    group.add(faucet);
-
-    // Dual Electrical Power Console with AC/DC Outlets
-    const consoleGeo = new THREE.BoxGeometry(0.4, 0.12, 0.15);
-    const consoleMesh = new THREE.Mesh(consoleGeo, this.materials.powerConsole);
-    consoleMesh.position.set(0, tableHeight + 0.06, -0.15);
-    group.add(consoleMesh);
-
-    // Power Indicator LED (Green glow)
-    const ledGeo = new THREE.SphereGeometry(0.015, 8, 8);
-    const ledMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
-    const led = new THREE.Mesh(ledGeo, ledMat);
-    led.position.set(0.12, tableHeight + 0.08, -0.07);
-    group.add(led);
-
-    // Table Identification Badge: "MEJA #01 (5 SISWA)"
-    const badgeCanvas = document.createElement('canvas');
-    badgeCanvas.width = 256;
-    badgeCanvas.height = 64;
-    const bctx = badgeCanvas.getContext('2d');
-    bctx.fillStyle = '#0f172a';
-    bctx.fillRect(0, 0, 256, 64);
-    bctx.strokeStyle = '#38bdf8';
-    bctx.lineWidth = 4;
-    bctx.strokeRect(2, 2, 252, 60);
-    bctx.fillStyle = '#38bdf8';
-    bctx.font = 'bold 22px monospace';
-    bctx.textAlign = 'center';
-    bctx.fillText(`MEJA PRAKTIKUM #${index < 10 ? '0' + index : index}`, 128, 30);
-    bctx.fillStyle = '#94a3b8';
-    bctx.font = '16px sans-serif';
-    bctx.fillText('KAPASITAS: 5 SISWA', 128, 52);
-
-    const badgeTex = new THREE.CanvasTexture(badgeCanvas);
-    const badgeMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.45, 0.12),
-      new THREE.MeshBasicMaterial({ map: badgeTex })
-    );
-    badgeMesh.position.set(0, tableHeight + 0.07, 0.51);
-    group.add(badgeMesh);
-
-    // 5 STOOL CHAIRS PER TABLE (For 40-50 students total)
-    // 2 chairs on north side, 2 chairs on south side, 1 chair on outer end
-    const stoolPositions = [
-      { sx: -0.5, sz: -0.65 },
-      { sx:  0.5, sz: -0.65 },
-      { sx: -0.5, sz:  0.65 },
-      { sx:  0.5, sz:  0.65 },
-      { sx:  x > 0 ? 1.15 : -1.15, sz: 0 }
-    ];
-
-    stoolPositions.forEach(sp => {
-      const stool = this.createStoolChair();
-      stool.position.set(sp.sx, 0, sp.sz);
-      group.add(stool);
-    });
-
-    // Tag group for raycasting & interactivity
-    group.userData = {
-      type: 'student_table',
-      index: index,
-      name: `Meja Praktikum Siswa #${index}`,
-      capacity: '4–5 Siswa (Regulasi Permendikbud)',
-      specs: 'Dilengkapi sink wastafel sentral, terminal stop kontak AC 220V, port catu daya DC teregulasi 0-12V, serta 5 kursi stool ergonomis.'
-    };
-
-    return group;
+          dummy.position.set(wx, 0.26, wz);
+          dummy.updateMatrix();
+          shaftInst.setMatrixAt(si, dummy.matrix);
+          si++;
+        }
+      }
+    }
+    seatInst.instanceMatrix.needsUpdate = true;
+    shaftInst.instanceMatrix.needsUpdate = true;
+    group.add(seatInst);
+    group.add(shaftInst);
   }
 
-  createStoolChair() {
-    const chairGroup = new THREE.Group();
-    const seatHeight = 0.52;
-    const seatRadius = 0.17;
-
-    // Circular seat top
-    const seatGeo = new THREE.CylinderGeometry(seatRadius, seatRadius, 0.035, 16);
-    const seatMesh = new THREE.Mesh(seatGeo, this.materials.chairSeat);
-    seatMesh.position.y = seatHeight;
-    seatMesh.castShadow = true;
-    chairGroup.add(seatMesh);
-
-    // Center shaft & 4 flared legs
-    const shaftGeo = new THREE.CylinderGeometry(0.02, 0.02, seatHeight - 0.05);
-    const shaft = new THREE.Mesh(shaftGeo, this.materials.steelLeg);
-    shaft.position.y = (seatHeight - 0.05) / 2;
-    chairGroup.add(shaft);
-
-    // Base ring footrest
-    const ringGeo = new THREE.TorusGeometry(0.12, 0.008, 8, 16);
-    const ring = new THREE.Mesh(ringGeo, this.materials.steelLeg);
-    ring.position.y = 0.2;
-    ring.rotation.x = Math.PI / 2;
-    chairGroup.add(ring);
-
-    return chairGroup;
+  addTableLabel(group, x, z, zOffset, num) {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(2, 2, 252, 60);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`MEJA PRAKTIKUM #${num}  (5 SISWA)`, 128, 38);
+    const tex = new THREE.CanvasTexture(c);
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.42, 0.1),
+      new THREE.MeshBasicMaterial({ map: tex })
+    );
+    m.position.set(x, 0.83, z + zOffset);
+    group.add(m);
   }
 
   createTeacherDemoStation() {
-    const group = new THREE.Group();
-    group.position.set(0, 0, -5.8);
+    const g = new THREE.Group();
+    g.position.set(0, 0, -5.8);
 
-    // 1. Raised Wooden/Carpet Podium Platform (Elevasi 15cm)
-    const podiumGeo = new THREE.BoxGeometry(4.6, 0.15, 2.0);
-    const podiumMesh = new THREE.Mesh(
-      podiumGeo,
-      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.2 })
-    );
-    podiumMesh.position.y = 0.075;
-    podiumMesh.receiveShadow = true;
-    group.add(podiumMesh);
+    // Podium (flat)
+    g.add(Object.assign(mesh(box(4.6, 0.15, 2.0), lamb(0x0f172a), false, true),
+      { position: new THREE.Vector3(0, 0.075, 0) }));
 
-    // 2. Demonstration Desk (Length 2.8m x Width 0.9m x Height 0.85m)
-    const deskTop = new THREE.Mesh(
-      new THREE.BoxGeometry(2.8, 0.06, 0.9),
-      this.materials.benchTop
-    );
-    deskTop.position.set(0, 0.15 + 0.85, 0);
-    deskTop.castShadow = true;
-    deskTop.receiveShadow = true;
-    group.add(deskTop);
+    // Desk top
+    const top = mesh(box(2.8, 0.06, 0.9), this.mat.benchTop, true, true);
+    top.position.set(0, 0.15 + 0.85, 0);
+    g.add(top);
 
-    // Desk Base / Cabinet Panels
-    const baseMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(2.7, 0.82, 0.8),
-      this.materials.cabinetWood
-    );
-    baseMesh.position.set(0, 0.15 + 0.41, 0);
-    baseMesh.castShadow = true;
-    group.add(baseMesh);
+    // Desk base
+    const base = mesh(box(2.7, 0.82, 0.8), this.mat.cabinet, true, false);
+    base.position.set(0, 0.15 + 0.41, 0);
+    g.add(base);
 
-    // Teacher Laptop / Presentation Console
-    const laptopGeo = new THREE.BoxGeometry(0.35, 0.02, 0.25);
-    const laptop = new THREE.Mesh(laptopGeo, this.materials.powerConsole);
-    laptop.position.set(-0.7, 0.15 + 0.89, 0);
-    group.add(laptop);
+    // Laptop (simple boxes, basic material)
+    const laptop = mesh(box(0.35, 0.02, 0.25), basic(0x1e293b));
+    laptop.position.set(-0.7, 1.02, 0);
+    g.add(laptop);
 
-    // Screen
-    const screenGeo = new THREE.BoxGeometry(0.35, 0.22, 0.015);
-    const screenMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-    const screen = new THREE.Mesh(screenGeo, screenMat);
-    screen.position.set(-0.7, 0.15 + 1.0, -0.12);
-    group.add(screen);
+    const screen = mesh(box(0.34, 0.20, 0.012), basic(0x38bdf8));
+    screen.position.set(-0.7, 1.12, -0.13);
+    g.add(screen);
 
-    // Demo Sink & Water Tap
-    const demoSink = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.18, 0.35), this.materials.sink);
-    demoSink.position.set(0.9, 0.15 + 0.8, 0);
-    group.add(demoSink);
+    // Demo sink
+    const dSink = mesh(box(0.38, 0.16, 0.32), this.mat.sink);
+    dSink.position.set(0.9, 0.94, 0);
+    g.add(dSink);
 
-    const demoFaucet = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3), this.materials.chrome);
-    demoFaucet.position.set(0.9, 0.15 + 1.02, 0.15);
-    group.add(demoFaucet);
+    // E-Stop box
+    const eStop = mesh(box(0.18, 0.11, 0.12), basic(0xdc2626));
+    eStop.position.set(0.2, 1.01, -0.22);
+    g.add(eStop);
 
-    // Master Power Switch Box with keylock
-    const masterBox = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.12, 0.15),
-      new THREE.MeshStandardMaterial({ color: 0xdc2626 })
-    );
-    masterBox.position.set(0.2, 0.15 + 0.94, -0.2);
-    group.add(masterBox);
-
-    group.userData = {
+    g.userData = {
       type: 'demo_station',
       name: 'Meja Demonstrasi Guru & Panggung Elevasi',
       capacity: 'Stasiun Guru & Instruktur',
-      specs: 'Ukuran 2.8m x 0.9m di atas panggung elevasi 15cm. Menghadap seluruh siswa, dilengkapi catu daya sentral, panel audio-visual proyektor, dan wastafel demonstrasi.'
+      specs: 'Ukuran 2.8m x 0.9m di atas panggung elevasi 15cm. Dilengkapi instalasi listrik master, panel audio-visual, dan wastafel demonstrasi.'
     };
-
-    return group;
+    return g;
   }
 
   createPreparationFurniture() {
-    const group = new THREE.Group();
+    const g = new THREE.Group();
 
-    // 1. Preparation Desk for Laboran (X = -7.5, Z = 0)
-    const prepDesk = new THREE.Mesh(
-      new THREE.BoxGeometry(2.0, 0.8, 0.9),
-      this.materials.cabinetWood
-    );
-    prepDesk.position.set(-7.5, 0.4, 0);
-    prepDesk.castShadow = true;
-    group.add(prepDesk);
+    // Prep desk (one simple box)
+    const d = mesh(box(2.0, 0.8, 0.9), this.mat.cabinet, true, false);
+    d.position.set(-7.5, 0.4, 0);
+    g.add(d);
     this.controls.addCollisionBox(-8.6, -6.4, -0.5, 0.5);
 
-    // 2. 4 Locked Glass Storage Cabinets (Lemari A, B, C, D) along West Wall (X = -9.5)
-    const cabinetNames = [
-      { name: "Lemari A: Kit Mekanika & Dinamika", z: -1.3 },
-      { name: "Lemari B: Kit Optik & Gelombang", z: -0.4 },
-      { name: "Lemari C: Kit Listrik & Magnet", z: 0.5 },
-      { name: "Lemari D: Kit Termofisika", z: 1.4 }
-    ];
-
-    cabinetNames.forEach(cab => {
-      const cabinet = this.createStorageCabinet(cab.name);
-      cabinet.position.set(-9.4, 0, cab.z);
-      group.add(cabinet);
-      this.controls.addCollisionBox(-9.8, -9.0, cab.z - 0.4, cab.z + 0.4);
+    // 4 Storage Cabinets as InstancedMesh
+    const cabBody = box(0.5, 2.0, 0.78);
+    const cabInst = new THREE.InstancedMesh(cabBody, this.mat.cabinet, 4);
+    const dummy = new THREE.Object3D();
+    const zs = [-1.3, -0.4, 0.5, 1.4];
+    zs.forEach((z, i) => {
+      dummy.position.set(-9.4, 1.0, z);
+      dummy.updateMatrix();
+      cabInst.setMatrixAt(i, dummy.matrix);
+      this.controls.addCollisionBox(-9.8, -9.0, z - 0.4, z + 0.4);
     });
+    cabInst.instanceMatrix.needsUpdate = true;
+    g.add(cabInst);
 
-    return group;
-  }
+    // Cabinet glass fronts as InstancedMesh (cheap MeshBasic)
+    const glassGeo = new THREE.PlaneGeometry(0.72, 1.8);
+    const glassInst = new THREE.InstancedMesh(glassGeo, this.mat.cabGlass, 4);
+    zs.forEach((z, i) => {
+      dummy.position.set(-9.15, 1.0, z);
+      dummy.rotation.set(0, Math.PI / 2, 0);
+      dummy.updateMatrix();
+      glassInst.setMatrixAt(i, dummy.matrix);
+    });
+    dummy.rotation.set(0, 0, 0); // reset rotation
+    glassInst.instanceMatrix.needsUpdate = true;
+    g.add(glassInst);
 
-  createStorageCabinet(title) {
-    const cabGroup = new THREE.Group();
-    // Height 2.0m, Width 0.8m, Depth 0.5m
-    const bodyGeo = new THREE.BoxGeometry(0.5, 2.0, 0.8);
-    const body = new THREE.Mesh(bodyGeo, this.materials.cabinetWood);
-    body.position.y = 1.0;
-    body.castShadow = true;
-    cabGroup.add(body);
-
-    // Glass door on the front (+X face)
-    const glass = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.72, 1.8),
-      this.materials.cabinetGlass
-    );
-    glass.position.set(0.26, 1.0, 0);
-    glass.rotation.y = Math.PI / 2;
-    cabGroup.add(glass);
-
-    // Internal Shelves with equipment boxes inside
-    for (let sy = 0.5; sy <= 1.5; sy += 0.5) {
-      const shelf = new THREE.Mesh(
-        new THREE.BoxGeometry(0.45, 0.02, 0.76),
-        this.materials.steelLeg
-      );
-      shelf.position.set(0, sy, 0);
-      cabGroup.add(shelf);
-
-      // Kit storage container box
-      const boxMat = new THREE.MeshStandardMaterial({
-        color: Math.random() > 0.5 ? 0x0284c7 : 0x059669,
-        roughness: 0.4
-      });
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.5), boxMat);
-      box.position.set(0, sy + 0.1, 0);
-      cabGroup.add(box);
-    }
-
-    cabGroup.userData = {
-      type: 'storage_cabinet',
-      name: title,
-      capacity: 'Penyimpanan Tertutup & Terkunci',
-      specs: 'Lemari kabinet kaca standar kementerian dengan kunci pengaman untuk mencegah kehilangan dan kerusakan komponen presisi.'
-    };
-
-    return cabGroup;
+    return g;
   }
 }

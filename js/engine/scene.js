@@ -6,34 +6,49 @@ export class EngineScene {
     this.width = window.innerWidth;
     this.height = window.innerHeight;
 
-    // Renderer with ACES Filmic Tone Mapping and Soft Shadows
+    // ---- RENDERER: Optimized for performance ----
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
-      antialias: true,
+      antialias: window.devicePixelRatio === 1, // Antialias only on 1x screens
       powerPreference: "high-performance",
-      alpha: false
+      alpha: false,
+      stencil: false,   // Disable stencil buffer - not needed
+      depth: true
     });
     this.renderer.setSize(this.width, this.height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Cap pixel ratio at 1.5 to reduce GPU load on HiDPI screens
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+
+    // Use soft shadows but with SMALL shadow maps
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap; // Cheaper than PCFSoft
+    this.renderer.shadowMap.autoUpdate = false; // Manual shadow update only on lighting change
+
+    // Lighter tone mapping (ACESFilmic is GPU expensive — use LinearToneMapping)
+    this.renderer.toneMapping = THREE.LinearToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
 
     // Scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a0f1d);
-    this.scene.fog = new THREE.FogExp2(0x0d1527, 0.015);
+    // Reduce fog density for performance
+    this.scene.fog = new THREE.Fog(0x0d1527, 18, 35);
 
-    // Camera (Default First-Person Eye Level at ~1.65m height)
-    this.camera = new THREE.PerspectiveCamera(65, this.width / this.height, 0.1, 100);
+    // Camera
+    this.camera = new THREE.PerspectiveCamera(65, this.width / this.height, 0.1, 60);
     this.camera.position.set(0, 1.65, 5);
 
     // Clock
     this.clock = new THREE.Clock();
 
-    // Window Resize Handler
+    // Force a shadow map update on first frame
+    this._shadowsNeedUpdate = true;
+
     window.addEventListener('resize', () => this.onWindowResize());
+  }
+
+  markShadowsDirty() {
+    this._shadowsNeedUpdate = true;
   }
 
   onWindowResize() {
@@ -45,6 +60,11 @@ export class EngineScene {
   }
 
   render() {
+    // Only recompute shadow maps when something changes (huge perf win)
+    if (this._shadowsNeedUpdate) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this._shadowsNeedUpdate = false;
+    }
     this.renderer.render(this.scene, this.camera);
   }
 }

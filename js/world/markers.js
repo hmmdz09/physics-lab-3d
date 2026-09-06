@@ -7,93 +7,70 @@ export class MarkerManager {
     this.markers = [];
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
-    this.hoveredObject = null;
     this.clickableMeshes = [];
+
+    // Shared geometry and material for all beacons (BIG perf win!)
+    this._beaconGeo = new THREE.OctahedronGeometry(0.14, 0); // Low poly
+    this._beaconMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+    this._coreMat   = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    this._ringGeo   = new THREE.RingGeometry(0.16, 0.20, 16);
+    this._ringMat   = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.55
+    });
+    this._coreGeo   = new THREE.SphereGeometry(0.055, 6, 6);
   }
 
   addMarker(id, title, pos, targetData = {}) {
     const group = new THREE.Group();
     group.position.set(pos.x, pos.y, pos.z);
 
-    // Glowing Holographic Diamond / Octahedron
-    const geo = new THREE.OctahedronGeometry(0.16, 0);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.85
-    });
-    const diamond = new THREE.Mesh(geo, mat);
-    diamond.position.y = 0.25;
+    const diamond = new THREE.Mesh(this._beaconGeo, this._beaconMat);
+    diamond.position.y = 0.22;
     group.add(diamond);
 
-    // Inner Glowing Core
-    const coreGeo = new THREE.SphereGeometry(0.07, 12, 12);
-    const coreMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-    const core = new THREE.Mesh(coreGeo, coreMat);
-    core.position.y = 0.25;
+    const core = new THREE.Mesh(this._coreGeo, this._coreMat);
+    core.position.y = 0.22;
     group.add(core);
 
-    // Pulsing Base Ring on ground / table surface
-    const ringGeo = new THREE.RingGeometry(0.18, 0.22, 24);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.6
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
+    const ring = new THREE.Mesh(this._ringGeo, this._ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.02;
     group.add(ring);
 
-    group.userData = {
-      id: id,
-      title: title,
-      targetData: targetData,
-      isMarker: true
-    };
-
+    group.userData = { id, title, targetData, isMarker: true };
     this.scene.add(group);
-    this.markers.push({ group, diamond, core, ring, basePosY: pos.y });
+    this.markers.push({ group, diamond, core, ring });
     this.clickableMeshes.push(diamond, core);
-
     return group;
   }
 
-  registerClickableMesh(mesh, data) {
-    mesh.userData = { ...mesh.userData, ...data };
-    this.clickableMeshes.push(mesh);
-  }
-
   update(delta, time) {
-    // Animate all holographic beacons
-    this.markers.forEach((m, idx) => {
-      const bob = Math.sin(time * 3 + idx) * 0.08;
-      m.diamond.position.y = 0.25 + bob;
-      m.core.position.y = 0.25 + bob;
-      m.diamond.rotation.y += delta * 1.5;
-      m.diamond.rotation.x += delta * 0.8;
+    // Reuse sin value — computed once per frame for all markers
+    const bobBase = time * 2.8;
+    const rotDelta = delta * 1.4;
 
-      const scalePulse = 1 + Math.sin(time * 4 + idx) * 0.15;
-      m.ring.scale.set(scalePulse, scalePulse, scalePulse);
+    this.markers.forEach((m, idx) => {
+      const bob = Math.sin(bobBase + idx * 1.1) * 0.07;
+      m.diamond.position.y = 0.22 + bob;
+      m.core.position.y    = 0.22 + bob;
+      m.diamond.rotation.y += rotDelta;
     });
+
+    // Ring pulse: update only every 4th frame
+    if (Math.round(time * 60) % 4 === 0) {
+      const s = 1 + Math.sin(time * 3.5) * 0.12;
+      this.markers.forEach(m => m.ring.scale.set(s, s, s));
+    }
   }
 
   checkRaycast(screenX, screenY, width, height) {
     this.mouse.x = (screenX / width) * 2 - 1;
     this.mouse.y = -(screenY / height) * 2 + 1;
-
     this.raycaster.setFromCamera(this.mouse, this.camera);
-    const intersects = this.raycaster.intersectObjects(this.clickableMeshes, true);
-
-    if (intersects.length > 0) {
-      let hit = intersects[0].object;
-      while (hit && !hit.userData?.name && !hit.userData?.title && hit.parent) {
-        hit = hit.parent;
-      }
-      return hit ? hit.userData : null;
-    }
-    return null;
+    const hits = this.raycaster.intersectObjects(this.clickableMeshes, false);
+    if (!hits.length) return null;
+    let obj = hits[0].object;
+    while (obj && !obj.userData?.title && obj.parent) obj = obj.parent;
+    return obj?.userData ?? null;
   }
 }

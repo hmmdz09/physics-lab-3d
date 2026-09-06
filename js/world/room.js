@@ -3,434 +3,220 @@ import * as THREE from 'three';
 export class RoomBuilder {
   constructor(scene) {
     this.scene = scene;
-    this.materials = {};
-    this.initMaterials();
-  }
-
-  initMaterials() {
-    // 1. Procedural Floor Tile Texture
-    const floorCanvas = document.createElement('canvas');
-    floorCanvas.width = 512;
-    floorCanvas.height = 512;
-    const fctx = floorCanvas.getContext('2d');
-    fctx.fillStyle = '#1e293b';
-    fctx.fillRect(0, 0, 512, 512);
-    // Draw 4 tiles (2x2) with light grid lines
-    fctx.fillStyle = '#0f172a';
-    fctx.fillRect(4, 4, 248, 248);
-    fctx.fillRect(260, 4, 248, 248);
-    fctx.fillRect(4, 260, 248, 248);
-    fctx.fillRect(260, 260, 248, 248);
-    fctx.strokeStyle = '#334155';
-    fctx.lineWidth = 4;
-    fctx.strokeRect(2, 2, 508, 508);
-
-    const floorTexture = new THREE.CanvasTexture(floorCanvas);
-    floorTexture.wrapS = THREE.RepeatWrapping;
-    floorTexture.wrapT = THREE.RepeatWrapping;
-    floorTexture.repeat.set(15, 8); // 60cm tiles across 15m x 8m
-
-    this.materials.floor = new THREE.MeshStandardMaterial({
-      map: floorTexture,
-      roughness: 0.25,
-      metalness: 0.15
-    });
-
-    // 2. Wall Material
-    this.materials.wall = new THREE.MeshStandardMaterial({
-      color: 0xf1f5f9,
-      roughness: 0.85,
-      metalness: 0.05
-    });
-
-    // 3. Wall Baseboard (Skirting)
-    this.materials.baseboard = new THREE.MeshStandardMaterial({
-      color: 0x1e3a8a,
-      roughness: 0.4
-    });
-
-    // 4. Ceiling Material
-    this.materials.ceiling = new THREE.MeshStandardMaterial({
-      color: 0xe2e8f0,
-      roughness: 0.95
-    });
-
-    // 5. Glass Material for Windows
-    this.materials.windowGlass = new THREE.MeshPhysicalMaterial({
-      color: 0xdbeafe,
-      transmission: 0.9,
-      opacity: 0.6,
-      transparent: true,
-      roughness: 0.05,
-      ior: 1.5
-    });
-
-    // 6. Metal Frame Material
-    this.materials.metalFrame = new THREE.MeshStandardMaterial({
-      color: 0x334155,
-      metalness: 0.8,
-      roughness: 0.3
-    });
   }
 
   build() {
     const roomGroup = new THREE.Group();
+    const wallMat  = new THREE.MeshLambertMaterial({ color: 0xf1f5f9 });
+    const floorMat = this._makeFloorMat();
+    const ceilMat  = new THREE.MeshLambertMaterial({ color: 0xe2e8f0 });
+    const glassMat = new THREE.MeshBasicMaterial({ color: 0xbfdbfe, transparent: true, opacity: 0.35 });
+    const metalMat = new THREE.MeshLambertMaterial({ color: 0x334155 });
+    const baseMat  = new THREE.MeshLambertMaterial({ color: 0x1e3a8a });
 
-    // ==========================================
-    // 1. MAIN LAB ROOM (15m Length x 8m Width x 3.8m Height = 120 m²)
-    // Coordinates: X: [-4, 4], Z: [-7.5, 7.5], Y: [0, 3.8]
-    // ==========================================
+    const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0, shadow = false) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      if (rx) m.rotation.x = rx;
+      if (ry) m.rotation.y = ry;
+      m.receiveShadow = shadow;
+      roomGroup.add(m);
+      return m;
+    };
 
+    // ============ MAIN HALL (15m × 8m × 3.8m) ============
     // Floor
-    const floorGeo = new THREE.PlaneGeometry(8, 15);
-    const floorMesh = new THREE.Mesh(floorGeo, this.materials.floor);
-    floorMesh.rotation.x = -Math.PI / 2;
-    floorMesh.receiveShadow = true;
-    roomGroup.add(floorMesh);
-
+    add(new THREE.PlaneGeometry(8, 15), floorMat, 0, 0, 0, -Math.PI / 2, 0, 0, true);
     // Ceiling
-    const ceilGeo = new THREE.PlaneGeometry(8, 15);
-    const ceilMesh = new THREE.Mesh(ceilGeo, this.materials.ceiling);
-    ceilMesh.position.y = 3.8;
-    ceilMesh.rotation.x = Math.PI / 2;
-    roomGroup.add(ceilMesh);
+    add(new THREE.PlaneGeometry(8, 15), ceilMat, 0, 3.8, 0, Math.PI / 2);
+    // Front wall Z=-7.5
+    add(new THREE.BoxGeometry(8, 3.8, 0.18), wallMat, 0, 1.9, -7.5, 0, 0, 0, true);
+    // Back wall Z=+7.5
+    add(new THREE.BoxGeometry(8, 3.8, 0.18), wallMat, 0, 1.9,  7.5, 0, 0, 0, true);
 
-    // Front Wall (Z = -7.5) Behind Teacher Demonstration Desk
-    const frontWallGeo = new THREE.BoxGeometry(8, 3.8, 0.2);
-    const frontWall = new THREE.Mesh(frontWallGeo, this.materials.wall);
-    frontWall.position.set(0, 1.9, -7.5);
-    frontWall.receiveShadow = true;
-    roomGroup.add(frontWall);
+    // Right exterior wall X=+4 — split into sill, header, mullions
+    //  Bottom sill
+    add(new THREE.BoxGeometry(0.18, 0.9, 15), wallMat, 4.0, 0.45, 0, 0, 0, 0, true);
+    //  Top header
+    add(new THREE.BoxGeometry(0.18, 0.7, 15), wallMat, 4.0, 3.45, 0);
+    //  5 Window glass panes
+    for (let i = 0; i < 5; i++) {
+      const zPos = -5.0 + i * 2.5;
+      add(new THREE.PlaneGeometry(2.0, 2.1), glassMat, 3.98, 2.0, zPos, 0, -Math.PI / 2);
+    }
+    //  Vertical mullion strips between windows
+    for (let i = 0; i < 6; i++) {
+      const zPos = -5.0 + i * 2.5 - 1.0;
+      add(new THREE.BoxGeometry(0.18, 2.2, 0.08), wallMat, 4.0, 2.0, zPos);
+    }
 
-    // Back Wall (Z = +7.5) with Outward Emergency Exit Doors
-    const backWallGeo = new THREE.BoxGeometry(8, 3.8, 0.2);
-    const backWall = new THREE.Mesh(backWallGeo, this.materials.wall);
-    backWall.position.set(0, 1.9, 7.5);
-    backWall.receiveShadow = true;
-    roomGroup.add(backWall);
+    // Left interior partition wall X=-4 (split for prep room doorway Z: -2.5 to +2.5)
+    add(new THREE.BoxGeometry(0.18, 3.8, 5.0), wallMat, -4.0, 1.9, -5.0, 0, 0, 0, true);
+    add(new THREE.BoxGeometry(0.18, 3.8, 5.0), wallMat, -4.0, 1.9,  5.0, 0, 0, 0, true);
+    // Door header
+    add(new THREE.BoxGeometry(0.18, 1.4, 5.0), wallMat, -4.0, 3.1, 0);
+    // Glass partition panel to see prep room
+    add(new THREE.PlaneGeometry(2.8, 1.5), glassMat, -3.99, 1.35, -1.0, 0, Math.PI / 2);
 
-    // Right Exterior Wall (X = +4) with Large Daylighting Windows
-    // Wall sections with cutouts for windows
-    this.buildWindowWall(roomGroup);
+    // ============ PREP ROOM (6m × 4m) X:[-10,-4] Z:[-2,+2] ============
+    add(new THREE.PlaneGeometry(6, 4),
+      new THREE.MeshLambertMaterial({ color: 0x1e293b }), -7.0, 0.01, 0, -Math.PI / 2, 0, 0, true);
+    add(new THREE.PlaneGeometry(6, 4), ceilMat, -7.0, 3.8, 0, Math.PI / 2);
+    add(new THREE.BoxGeometry(0.18, 3.8, 4),  wallMat, -10.0, 1.9, 0, 0, 0, 0, true);
+    add(new THREE.BoxGeometry(6,    3.8, 0.18), wallMat, -7.0, 1.9, -2.0);
+    add(new THREE.BoxGeometry(6,    3.8, 0.18), wallMat, -7.0, 1.9,  2.0);
 
-    // Left Interior Wall (X = -4) with Door to Preparation Room
-    this.buildPartitionWall(roomGroup);
-
-    // ==========================================
-    // 2. PREPARATION & STORAGE ROOM (4m Length x 6m Width = 24 m²)
-    // Attached on left: X: [-10, -4], Z: [-3, 3], Y: [0, 3.8]
-    // ==========================================
-    this.buildPreparationRoom(roomGroup);
-
-    // ==========================================
-    // 3. ARCHITECTURAL DETAILS & WALL ASSETS
-    // ==========================================
+    // ============ WHITEBOARD ============
     this.buildWhiteboard(roomGroup);
-    this.buildWallPosters(roomGroup);
-    this.buildCeilingBeams(roomGroup);
-    this.buildBaseboards(roomGroup);
+
+    // ============ CEILING BEAMS ============
+    const beamGeo = new THREE.BoxGeometry(8, 0.22, 0.12);
+    const beamMat = new THREE.MeshLambertMaterial({ color: 0x1e293b });
+    for (let z = -5.0; z <= 5.0; z += 2.5) {
+      const beam = new THREE.Mesh(beamGeo, beamMat);
+      beam.position.set(0, 3.69, z);
+      roomGroup.add(beam);
+    }
+
+    // ============ BASEBOARD STRIPS ============
+    const bb = new THREE.MeshLambertMaterial({ color: 0x1e3a8a });
+    add(new THREE.BoxGeometry(8, 0.1, 0.03), bb, 0, 0.05, -7.4);
+    add(new THREE.BoxGeometry(8, 0.1, 0.03), bb, 0, 0.05,  7.4);
+
+    // ============ SIGNAGE OVER PREP DOOR ============
+    const signTex = this._makeSignTexture();
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.7, 0.42),
+      new THREE.MeshBasicMaterial({ map: signTex })
+    );
+    sign.position.set(-3.87, 2.65, 0);
+    sign.rotation.y = Math.PI / 2;
+    roomGroup.add(sign);
+
+    // ============ PHYSICS CONSTANTS POSTER ============
+    const posterTex = this._makePosterTexture();
+    const poster = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.3, 1.9),
+      new THREE.MeshBasicMaterial({ map: posterTex })
+    );
+    poster.position.set(-3.88, 2.1, -4.5);
+    poster.rotation.y = Math.PI / 2;
+    roomGroup.add(poster);
 
     this.scene.add(roomGroup);
     return roomGroup;
   }
 
-  buildWindowWall(group) {
-    // Exterior wall with 6 tall windows (X = +4.0)
-    const wallLength = 15;
-    const windowCount = 5;
-    const pillarWidth = 0.5;
-    const winWidth = 2.0;
-    const winHeight = 2.2;
-    const sillHeight = 0.9;
-
-    // Bottom solid wall sill
-    const bottomWall = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, sillHeight, wallLength),
-      this.materials.wall
-    );
-    bottomWall.position.set(4.0, sillHeight / 2, 0);
-    bottomWall.receiveShadow = true;
-    group.add(bottomWall);
-
-    // Top wall above windows
-    const topWallHeight = 3.8 - (sillHeight + winHeight);
-    const topWall = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, topWallHeight, wallLength),
-      this.materials.wall
-    );
-    topWall.position.set(4.0, 3.8 - topWallHeight / 2, 0);
-    topWall.receiveShadow = true;
-    group.add(topWall);
-
-    // Window panes and vertical mullions
-    for (let i = 0; i < windowCount; i++) {
-      const zPos = -5.0 + i * 2.5;
-
-      // Window Glass
-      const glass = new THREE.Mesh(
-        new THREE.PlaneGeometry(winWidth * 0.95, winHeight),
-        this.materials.windowGlass
-      );
-      glass.position.set(3.98, sillHeight + winHeight / 2, zPos);
-      glass.rotation.y = -Math.PI / 2;
-      group.add(glass);
-
-      // Window Frame Outline
-      const frame = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08, winHeight, 0.08),
-        this.materials.metalFrame
-      );
-      frame.position.set(3.99, sillHeight + winHeight / 2, zPos);
-      group.add(frame);
-    }
+  _makeFloorMat() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(3, 3, 123, 123);
+    ctx.fillRect(130, 3, 123, 123);
+    ctx.fillRect(3, 130, 123, 123);
+    ctx.fillRect(130, 130, 123, 123);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(12, 8); // ~60cm tiles
+    return new THREE.MeshLambertMaterial({ map: tex });
   }
 
-  buildPartitionWall(group) {
-    // Left interior wall (X = -4.0)
-    // Wall before prep room door (Z: [-7.5, -2.5])
-    const wallNorth = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 3.8, 5.0),
-      this.materials.wall
-    );
-    wallNorth.position.set(-4.0, 1.9, -5.0);
-    wallNorth.receiveShadow = true;
-    group.add(wallNorth);
-
-    // Wall after prep room door (Z: [2.5, 7.5])
-    const wallSouth = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 3.8, 5.0),
-      this.materials.wall
-    );
-    wallSouth.position.set(-4.0, 1.9, 5.0);
-    wallSouth.receiveShadow = true;
-    group.add(wallSouth);
-
-    // Header above door (Z: [-2.5, 2.5], Y: [2.4, 3.8])
-    const doorHeader = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 1.4, 5.0),
-      this.materials.wall
-    );
-    doorHeader.position.set(-4.0, 3.1, 0);
-    group.add(doorHeader);
-
-    // Glass partition & door frame into prep room
-    const prepDoorFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 2.4, 1.8),
-      this.materials.metalFrame
-    );
-    prepDoorFrame.position.set(-4.0, 1.2, 0);
-    group.add(prepDoorFrame);
-
-    // Glass panel for prep room view
-    const prepGlass = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.8, 1.6),
-      this.materials.windowGlass
-    );
-    prepGlass.position.set(-3.98, 1.4, -1.0);
-    prepGlass.rotation.y = Math.PI / 2;
-    group.add(prepGlass);
-
-    // Signboard above prep room: "RUANG PERSIAPAN & GUDANG ALAT (24 m²)"
-    const signCanvas = document.createElement('canvas');
-    signCanvas.width = 512;
-    signCanvas.height = 128;
-    const sctx = signCanvas.getContext('2d');
-    sctx.fillStyle = '#0f172a';
-    sctx.fillRect(0, 0, 512, 128);
-    sctx.strokeStyle = '#38bdf8';
-    sctx.lineWidth = 6;
-    sctx.strokeRect(4, 4, 504, 120);
-    sctx.fillStyle = '#38bdf8';
-    sctx.font = 'bold 30px sans-serif';
-    sctx.textAlign = 'center';
-    sctx.fillText('RUANG PERSIAPAN & ALAT', 256, 54);
-    sctx.fillStyle = '#94a3b8';
-    sctx.font = 'bold 20px monospace';
-    sctx.fillText('STANDAR PERMENDIKBUD 24 M²', 256, 92);
-
-    const signTexture = new THREE.CanvasTexture(signCanvas);
-    const signMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.8, 0.45),
-      new THREE.MeshBasicMaterial({ map: signTexture })
-    );
-    signMesh.position.set(-3.89, 2.6, 0);
-    signMesh.rotation.y = Math.PI / 2;
-    group.add(signMesh);
+  _makeSignTexture() {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 128;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(4, 4, 504, 120);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('RUANG PERSIAPAN & ALAT — 24 m²', 256, 52);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('PERMENDIKBUD No. 24/2007  ·  Min 18 m²', 256, 92);
+    return new THREE.CanvasTexture(c);
   }
 
-  buildPreparationRoom(group) {
-    // Prep Room Dimensions: Width 6m (X: -10 to -4), Length 4m (Z: -2 to +2), Area 24 m²
-    // Floor
-    const prepFloorGeo = new THREE.PlaneGeometry(6, 4);
-    const prepFloor = new THREE.Mesh(
-      prepFloorGeo,
-      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 })
-    );
-    prepFloor.position.set(-7.0, 0.01, 0);
-    prepFloor.rotation.x = -Math.PI / 2;
-    group.add(prepFloor);
-
-    // Ceiling
-    const prepCeil = new THREE.Mesh(
-      new THREE.PlaneGeometry(6, 4),
-      this.materials.ceiling
-    );
-    prepCeil.position.set(-7.0, 3.8, 0);
-    prepCeil.rotation.x = Math.PI / 2;
-    group.add(prepCeil);
-
-    // West Wall (X = -10)
-    const westWall = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 3.8, 4),
-      this.materials.wall
-    );
-    westWall.position.set(-10.0, 1.9, 0);
-    group.add(westWall);
-
-    // North Wall (Z = -2.0)
-    const northWall = new THREE.Mesh(
-      new THREE.BoxGeometry(6, 3.8, 0.2),
-      this.materials.wall
-    );
-    northWall.position.set(-7.0, 1.9, -2.0);
-    group.add(northWall);
-
-    // South Wall (Z = +2.0)
-    const southWall = new THREE.Mesh(
-      new THREE.BoxGeometry(6, 3.8, 0.2),
-      this.materials.wall
-    );
-    southWall.position.set(-7.0, 1.9, 2.0);
-    group.add(southWall);
+  _makePosterTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 384;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, 256, 384);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(4, 4, 248, 376);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('KONSTANTA FISIKA', 128, 38);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '16px monospace';
+    ctx.textAlign = 'left';
+    const lines = [
+      'g  = 9.80665 m/s²', 'c  = 2.998 × 10⁸ m/s',
+      'e  = 1.602 × 10⁻¹⁹ C', 'h  = 6.626 × 10⁻³⁴ J·s',
+      'G  = 6.674 × 10⁻¹¹ N·m²/kg²',
+      'k  = 1.381 × 10⁻²³ J/K',
+      'Nₐ = 6.022 × 10²³ mol⁻¹'
+    ];
+    lines.forEach((l, i) => ctx.fillText(l, 18, 80 + i * 34));
+    ctx.fillStyle = '#10b981';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Rasio Min: 2.4 m²/Siswa', 128, 330);
+    ctx.fillStyle = '#64748b';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('Permendikbud No. 24/2007', 128, 355);
+    return new THREE.CanvasTexture(c);
   }
 
   buildWhiteboard(group) {
-    // Whiteboard on Front Wall (Z = -7.38, Y = 1.9)
-    const wbCanvas = document.createElement('canvas');
-    wbCanvas.width = 1024;
-    wbCanvas.height = 512;
-    const ctx = wbCanvas.getContext('2d');
-
-    // Ceramic white background
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 256;  // Halved vs before
+    const ctx = c.getContext('2d');
     ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(0, 0, 1024, 512);
-
-    // Title banner
+    ctx.fillRect(0, 0, 512, 256);
     ctx.fillStyle = '#1e3a8a';
-    ctx.fillRect(0, 0, 1024, 60);
+    ctx.fillRect(0, 0, 512, 36);
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 24px sans-serif';
-    ctx.fillText('LABORATORIUM FISIKA — SMA KEMENDIKBUDRISTEK RI', 40, 40);
-
-    // Physics formulas written in markers
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 36px monospace';
-    ctx.fillText('1. HUKUM II NEWTON:  ΣF = m · a', 60, 130);
-
-    ctx.fillStyle = '#2563eb';
-    ctx.font = 'bold 36px monospace';
-    ctx.fillText('2. PEMBIASAN:       n₁·sin(θ₁) = n₂·sin(θ₂)', 60, 200);
-
-    ctx.fillStyle = '#059669';
-    ctx.font = 'bold 36px monospace';
-    ctx.fillText('3. HUKUM OHM:       V = I · R  |  P = V · I', 60, 270);
-
-    ctx.fillStyle = '#d97706';
-    ctx.font = 'bold 36px monospace';
-    ctx.fillText('4. ASAS BLACK:      Q_lepas = Q_terima', 60, 340);
-
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText('LABORATORIUM FISIKA — STANDAR KEMENDIKBUD RI', 20, 24);
+    const fmls = [
+      { c: '#0f172a', t: '1. Hukum Newton:   ΣF = m · a' },
+      { c: '#2563eb', t: '2. Snellius:        n₁·sin θ₁ = n₂·sin θ₂' },
+      { c: '#059669', t: '3. Ohm:             V = I · R' },
+      { c: '#d97706', t: '4. Asas Black:      Q_lepas = Q_terima' },
+    ];
+    ctx.font = 'bold 20px monospace';
+    fmls.forEach((f, i) => {
+      ctx.fillStyle = f.c;
+      ctx.fillText(f.t, 24, 72 + i * 44);
+    });
     ctx.fillStyle = '#dc2626';
-    ctx.font = 'bold 26px sans-serif';
-    ctx.fillText('⚠️ PATUHI K3 LAB: Pakai Jas Lab, Matikan Daya Listrik Sebelum Merangkai!', 60, 440);
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText('⚠️ K3: Pakai Jas Lab! Matikan Listrik Sebelum Merangkai!', 24, 230);
 
-    const wbTexture = new THREE.CanvasTexture(wbCanvas);
-    const wbMesh = new THREE.Mesh(
+    const tex = new THREE.CanvasTexture(c);
+    const wb = new THREE.Mesh(
       new THREE.PlaneGeometry(5.2, 2.2),
-      new THREE.MeshStandardMaterial({
-        map: wbTexture,
-        roughness: 0.15,
-        metalness: 0.05
-      })
+      new THREE.MeshBasicMaterial({ map: tex })
     );
-    wbMesh.position.set(0, 2.0, -7.38);
-    group.add(wbMesh);
+    wb.position.set(0, 2.0, -7.38);
+    group.add(wb);
 
-    // Frame for whiteboard
+    // Frame (lambertian, no shadow needed)
     const frame = new THREE.Mesh(
       new THREE.BoxGeometry(5.3, 2.3, 0.04),
-      this.materials.metalFrame
+      new THREE.MeshLambertMaterial({ color: 0x334155 })
     );
     frame.position.set(0, 2.0, -7.39);
     group.add(frame);
-  }
-
-  buildWallPosters(group) {
-    // 1. Periodic Table / Physics Constants Poster on Left Wall
-    const pCanvas = document.createElement('canvas');
-    pCanvas.width = 512;
-    pCanvas.height = 768;
-    const pctx = pCanvas.getContext('2d');
-    pctx.fillStyle = '#0f172a';
-    pctx.fillRect(0, 0, 512, 768);
-    pctx.strokeStyle = '#38bdf8';
-    pctx.lineWidth = 6;
-    pctx.strokeRect(6, 6, 500, 756);
-
-    pctx.fillStyle = '#38bdf8';
-    pctx.font = 'bold 28px sans-serif';
-    pctx.textAlign = 'center';
-    pctx.fillText('KONSTANTA FISIKA', 256, 60);
-
-    pctx.fillStyle = '#e2e8f0';
-    pctx.font = '20px monospace';
-    pctx.textAlign = 'left';
-    pctx.fillText('g  = 9.80665 m/s²', 40, 140);
-    pctx.fillText('c  = 2.99792 × 10⁸ m/s', 40, 190);
-    pctx.fillText('e  = 1.60218 × 10⁻¹⁹ C', 40, 240);
-    pctx.fillText('h  = 6.62607 × 10⁻³⁴ J·s', 40, 290);
-    pctx.fillText('G  = 6.67430 × 10⁻¹¹ N·m²/kg²', 40, 340);
-    pctx.fillText('k  = 1.38065 × 10⁻²³ J/K', 40, 390);
-    pctx.fillText('Nₐ = 6.02214 × 10²³ mol⁻¹', 40, 440);
-
-    pctx.fillStyle = '#10b981';
-    pctx.font = 'bold 24px sans-serif';
-    pctx.textAlign = 'center';
-    pctx.fillText('STANDAR SARPRAS KEMENDIKBUD', 256, 580);
-    pctx.fillStyle = '#94a3b8';
-    pctx.font = '18px sans-serif';
-    pctx.fillText('Permendikbud No. 24/2007', 256, 620);
-    pctx.fillText('Rasio Minimum: 2.4 m² / Siswa', 256, 660);
-
-    const posterTex = new THREE.CanvasTexture(pCanvas);
-    const posterMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.4, 2.1),
-      new THREE.MeshStandardMaterial({ map: posterTex, roughness: 0.3 })
-    );
-    posterMesh.position.set(-3.88, 2.1, -4.5);
-    posterMesh.rotation.y = Math.PI / 2;
-    group.add(posterMesh);
-  }
-
-  buildCeilingBeams(group) {
-    // Steel architectural beams along the 15m hall
-    const beamGeo = new THREE.BoxGeometry(8, 0.25, 0.15);
-    const beamMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
-
-    for (let z = -5.0; z <= 5.0; z += 2.5) {
-      const beam = new THREE.Mesh(beamGeo, beamMat);
-      beam.position.set(0, 3.68, z);
-      group.add(beam);
-    }
-  }
-
-  buildBaseboards(group) {
-    // Front, Back baseboards
-    const bbFront = new THREE.Mesh(new THREE.BoxGeometry(8, 0.12, 0.04), this.materials.baseboard);
-    bbFront.position.set(0, 0.06, -7.38);
-    group.add(bbFront);
-
-    const bbBack = new THREE.Mesh(new THREE.BoxGeometry(8, 0.12, 0.04), this.materials.baseboard);
-    bbBack.position.set(0, 0.06, 7.38);
-    group.add(bbBack);
   }
 }
