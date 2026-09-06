@@ -122,10 +122,12 @@ class PhysicsLabApp {
       });
     });
 
-    // Teleport dock
+    // Teleport / POV dock
     document.querySelectorAll('.tp-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         audioManager.init?.();
+        document.querySelectorAll('.tp-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
         this._teleport(btn.dataset.target);
       });
     });
@@ -133,15 +135,21 @@ class PhysicsLabApp {
 
   _teleport(target) {
     const map = {
-      demo:        {x:0,    z:-4.0, y:Math.PI},
-      table1:      {x:-0.5, z:-2.5, y:-Math.PI/2},
-      table6:      {x:0.5,  z:2.5,  y:Math.PI/2},
-      optics:      {x:-0.7, z:3.8,  y:-Math.PI/2},
-      oscilloscope:{x:-0.7, z:1.9,  y:-Math.PI/2},
-      wash:        {x:-2.4, z:5.6,  y:0},
-      k3:          {x:-2.4, z:5.0,  y:-Math.PI/2},
-      prep:        {x:-7.0, z:0,    y:-Math.PI/2},
-      safety:      {x:2.5,  z:6.5,  y:0},
+      // POV Pintu Masuk
+      entrance:    { x: 0,    z: 6.8,  y: Math.PI },
+      // POV Guru (Meja Demonstrasi Guru menghadap murid)
+      demo:        { x: 0,    z: -6.4, y: 0 },
+      // POV Murid tiap meja praktikum (menghadap ke guru & papan tulis)
+      table1:      { x: -2.0, z: -3.0, y: Math.PI },
+      table2:      { x: -2.0, z: -1.1, y: Math.PI },
+      table3:      { x: -2.0, z: 0.8,  y: Math.PI },
+      table4:      { x: -2.0, z: 2.7,  y: Math.PI },
+      table5:      { x: -2.0, z: 4.6,  y: Math.PI },
+      table6:      { x: 2.0,  z: -3.0, y: Math.PI },
+      table7:      { x: 2.0,  z: -1.1, y: Math.PI },
+      table8:      { x: 2.0,  z: 0.8,  y: Math.PI },
+      table9:      { x: 2.0,  z: 2.7,  y: Math.PI },
+      table10:     { x: 2.0,  z: 4.6,  y: Math.PI },
     };
     const t = map[target];
     if (t) this.controls.teleportTo({x:t.x, z:t.z}, {x:0, y:t.y});

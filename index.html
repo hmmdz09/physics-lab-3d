@@ -32,11 +32,16 @@
   <!-- TOP HUD ─────────────────────────────── -->
   <header id="hud-top">
     <div id="brand">
-      <div id="brand-logo">
-        <span class="logo-icon">⚗️</span>
-        <div>
-          <div id="brand-name">LABORATORIUM FISIKA 3D</div>
-          <div id="brand-sub">Kemendikbudristek · Permendikbud 24/2007</div>
+      <div id="brand-identity">
+        <div id="brand-logos-group">
+          <img src="./logos/upi.png" alt="Logo UPI" class="inst-logo" title="Universitas Pendidikan Indonesia">
+          <img src="./logos/fpmipa.png" alt="Logo FPMIPA" class="inst-logo" title="FPMIPA UPI">
+          <img src="./logos/pendikfis.png" alt="Logo Pendidikan Fisika" class="inst-logo" title="Pendidikan Fisika UPI">
+        </div>
+        <div id="identity-info">
+          <div id="student-name">M. HAMDI</div>
+          <div id="student-prodi">Pendidikan Fisika · FPMIPA UPI</div>
+          <div id="brand-title">Laboratorium Fisika 3D</div>
         </div>
       </div>
       <div id="brand-stats">
@@ -75,7 +80,7 @@
     </div>
   </header>
 
-  <!-- BOTTOM BAR ────────────────────────────── -->
+  <!-- BOTTOM BAR (TRANSPARENT HUD) ────────────────────────────── -->
   <footer id="hud-bottom">
     <!-- Radar -->
     <div id="radar-wrap">
@@ -84,18 +89,26 @@
       <div id="coords-display" class="mono">X: 0.0 | Z: 0.0</div>
     </div>
 
-    <!-- Teleport dock -->
+    <!-- POV Menu (Simplified) -->
     <nav id="teleport-dock">
-      <span class="dock-label">⚡ TELEPORT</span>
-      <button class="tp-btn" data-target="demo">👨‍🏫 Guru & Demo</button>
-      <button class="tp-btn" data-target="table1">🔬 Meja 1–5</button>
-      <button class="tp-btn" data-target="table6">⚡ Meja 6–10</button>
-      <button class="tp-btn" data-target="optics">🌈 Optik & Laser</button>
-      <button class="tp-btn" data-target="oscilloscope">📈 Osiloskop</button>
-      <button class="tp-btn" data-target="wash">🚰 Cuci Tangan</button>
-      <button class="tp-btn" data-target="k3">🛡️ Prosedur K3</button>
-      <button class="tp-btn" data-target="prep">🚪 Persiapan</button>
-      <button class="tp-btn" data-target="safety">🧯 K3 & APAR</button>
+      <div class="pov-main-group">
+        <button class="tp-btn pov-btn" data-target="entrance">🚪 POV Pintu Masuk</button>
+        <button class="tp-btn pov-btn" data-target="demo">👨‍🏫 POV Guru</button>
+      </div>
+      
+      <div class="pov-student-group">
+        <span class="dock-label">🎓 POV MEJA SISWA:</span>
+        <button class="tp-btn pov-table-btn" data-target="table1" title="POV Meja Siswa 1">Meja 1</button>
+        <button class="tp-btn pov-table-btn" data-target="table2" title="POV Meja Siswa 2">Meja 2</button>
+        <button class="tp-btn pov-table-btn" data-target="table3" title="POV Meja Siswa 3">Meja 3</button>
+        <button class="tp-btn pov-table-btn" data-target="table4" title="POV Meja Siswa 4">Meja 4</button>
+        <button class="tp-btn pov-table-btn" data-target="table5" title="POV Meja Siswa 5">Meja 5</button>
+        <button class="tp-btn pov-table-btn" data-target="table6" title="POV Meja Siswa 6">Meja 6</button>
+        <button class="tp-btn pov-table-btn" data-target="table7" title="POV Meja Siswa 7">Meja 7</button>
+        <button class="tp-btn pov-table-btn" data-target="table8" title="POV Meja Siswa 8">Meja 8</button>
+        <button class="tp-btn pov-table-btn" data-target="table9" title="POV Meja Siswa 9">Meja 9</button>
+        <button class="tp-btn pov-table-btn" data-target="table10" title="POV Meja Siswa 10">Meja 10</button>
+      </div>
     </nav>
 
     <!-- Key hints -->
@@ -103,7 +116,7 @@
       <div class="kh-row"><kbd>W A S D</kbd><span>Gerak</span></div>
       <div class="kh-row"><kbd>Mouse</kbd><span>Lihat 360°</span></div>
       <div class="kh-row"><kbd>Shift</kbd><span>Sprint</span></div>
-      <div class="kh-row"><kbd>Klik</kbd><span>Inspeksi</span></div>
+      <div class="kh-row"><kbd>Klik</kbd><span>Kunci Kursor</span></div>
     </div>
   </footer>
 
