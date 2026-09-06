@@ -57,12 +57,6 @@ class PhysicsLabApp {
 
     // UI refs
     this.fpsEl        = null;
-    this.toast        = document.getElementById('info-toast');
-    this.toastText    = document.getElementById('toast-text');
-    this.toastIcon    = document.getElementById('toast-icon');
-    this.stationLabel = document.getElementById('station-label');
-    this.slName       = document.getElementById('sl-name');
-    this.slDesc       = document.getElementById('sl-desc');
     this.coordsEl     = document.getElementById('coords-display');
     this.radarCtx     = document.getElementById('radar-canvas')?.getContext('2d');
 
@@ -173,21 +167,8 @@ class PhysicsLabApp {
 
     const cross = document.getElementById('crosshair');
     if (near?.targetData) {
-      const d = near.targetData;
-      this._nearbyData = d;
-      // Show side label
-      if (this.slName)  this.slName.textContent  = d.icon + '  ' + d.title;
-      if (this.slDesc)  this.slDesc.textContent  = d.desc;
-      this.stationLabel?.classList.add('visible');
-      // Toast
-      if (this.toastIcon)  this.toastIcon.textContent  = d.icon ?? '💡';
-      if (this.toastText)  this.toastText.textContent  = d.title;
-      this.toast?.classList.add('visible');
       cross?.classList.add('interactable');
     } else {
-      this._nearbyData = null;
-      this.stationLabel?.classList.remove('visible');
-      this.toast?.classList.remove('visible');
       cross?.classList.remove('interactable');
     }
   }
