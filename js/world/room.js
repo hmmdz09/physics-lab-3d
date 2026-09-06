@@ -44,10 +44,10 @@ export class RoomBuilder {
     const ledgeMat = new THREE.MeshLambertMaterial({ color: 0xe2e8f0 });
     add(new THREE.BoxGeometry(0.26, 0.04, 15), ledgeMat, 3.92, 0.92, 0);
 
-    // 5 Architectural Windows with aluminum frames & double-sided sky-tinted glass
+    // 5 Architectural Windows with aluminum frames & crystal clear glass
     const frameMat = new THREE.MeshLambertMaterial({ color: 0x1e293b }); // Dark charcoal aluminum
     const winGlassMat = new THREE.MeshBasicMaterial({
-      color: 0xbae6fd, transparent: true, opacity: 0.35, side: THREE.DoubleSide
+      color: 0xe0f2fe, transparent: true, opacity: 0.16, side: THREE.DoubleSide
     });
 
     for (let i = 0; i < 5; i++) {
@@ -74,28 +74,64 @@ export class RoomBuilder {
       add(new THREE.BoxGeometry(0.20, 2.1, 0.42), wallMat, 4.0, 1.95, zPos, 0, 0, 0, true);
     }
 
-    // ============ OUTDOOR SCENERY (RIGHT WINDOW VISTA) ============
-    // Outdoor manicured school lawn
-    const lawnMat = new THREE.MeshLambertMaterial({ color: 0x1f5424 });
-    add(new THREE.PlaneGeometry(16, 26), lawnMat, 12.0, -0.01, 0, -Math.PI / 2, 0, 0);
+    // ============ OUTDOOR SCENERY (GEDUNG VILLA ISOLA UPI VISTA) ============
+    // 1. Manicured campus lawn outside windows (seamless color match with Villa Isola garden)
+    const lawnMat = new THREE.MeshLambertMaterial({ color: 0x3f6212 });
+    add(new THREE.PlaneGeometry(24, 28), lawnMat, 15.0, -0.01, 0, -Math.PI / 2, 0, 0);
 
-    // Outdoor paved walkway along windows
+    // 2. Exterior paved walkway along windows
     const paveMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
-    add(new THREE.PlaneGeometry(1.6, 22), paveMat, 4.9, 0.005, 0, -Math.PI / 2, 0, 0);
+    add(new THREE.PlaneGeometry(1.6, 22), paveMat, 4.85, 0.005, 0, -Math.PI / 2, 0, 0);
+    // Concrete curb along walkway
+    add(new THREE.BoxGeometry(0.12, 0.06, 22), metalMat, 5.66, 0.03, 0);
 
-    // Decorative landscape garden hedges along the walkway
+    // 3. Garden hedges along the walkway
     const hedgeMat = new THREE.MeshLambertMaterial({ color: 0x166534 });
-    add(new THREE.BoxGeometry(0.55, 0.75, 18), hedgeMat, 6.0, 0.375, 0);
+    add(new THREE.BoxGeometry(0.55, 0.70, 18), hedgeMat, 6.0, 0.35, 0);
 
-    // Outdoor daylight sky panorama backdrop plane
-    const skyTex = this._makeOutdoorSkyTexture();
-    const skyPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(36, 16),
-      new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.DoubleSide })
+    // 4. Blooming flower shrubs (Bougainvillea UPI campus garden)
+    const flowerPink = new THREE.MeshLambertMaterial({ color: 0xd946ef });
+    const flowerRed  = new THREE.MeshLambertMaterial({ color: 0xf43f5e });
+    [-4.5, -2.0, 0.8, 3.5].forEach((fz, i) => {
+      const fMat = i % 2 === 0 ? flowerPink : flowerRed;
+      add(new THREE.BoxGeometry(0.42, 0.45, 0.9), fMat, 6.0, 0.52, fz);
+    });
+
+    // 5. Classic UPI Campus Garden Lantern Posts
+    [-3.2, 3.2].forEach(lz => {
+      // Pole
+      add(new THREE.CylinderGeometry(0.04, 0.05, 2.6, 8), metalMat, 5.2, 1.3, lz);
+      // Lantern cap
+      add(new THREE.ConeGeometry(0.22, 0.15, 6), metalMat, 5.2, 2.65, lz);
+      // Glowing globe
+      add(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfef08a }), 5.2, 2.52, lz);
+    });
+
+    // 6. Iconic Gedung Villa Isola UPI Panoramic Vista
+    const textureLoader = new THREE.TextureLoader();
+    const isolaTexture = textureLoader.load('./textures/isola_upi.jpg', (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      if (this.outdoorVistaMat) {
+        this.outdoorVistaMat.map = tex;
+        this.outdoorVistaMat.needsUpdate = true;
+      }
+    });
+
+    this.outdoorVistaMat = new THREE.MeshBasicMaterial({
+      map: isolaTexture,
+      side: THREE.DoubleSide
+    });
+
+    // High-resolution backdrop plane aligned with window viewing angles
+    const vistaMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(36, 20.25),
+      this.outdoorVistaMat
     );
-    skyPlane.position.set(18.0, 6.0, 0);
-    skyPlane.rotation.y = -Math.PI / 2;
-    roomGroup.add(skyPlane);
+    vistaMesh.position.set(20.0, 5.8, 0);
+    vistaMesh.rotation.y = -Math.PI / 2;
+    roomGroup.add(vistaMesh);
 
     // Left interior partition wall X=-4 (split for prep room doorway Z: -2.5 to +2.5)
     add(new THREE.BoxGeometry(0.18, 3.8, 5.0), wallMat, -4.0, 1.9, -5.0, 0, 0, 0, true);
@@ -443,5 +479,16 @@ export class RoomBuilder {
     drawCloud(260, 140, 34);
 
     return new THREE.CanvasTexture(c);
+  }
+
+  setOutdoorLighting(mode) {
+    if (!this.outdoorVistaMat) return;
+    if (mode === 'day') {
+      this.outdoorVistaMat.color.setHex(0xffffff);
+    } else if (mode === 'lab') {
+      this.outdoorVistaMat.color.setHex(0xf1f5f9);
+    } else if (mode === 'cinematic') {
+      this.outdoorVistaMat.color.setHex(0x384252);
+    }
   }
 }

@@ -37,7 +37,10 @@ class PhysicsLabApp {
     this.controls = new ControllerManager(this.engine.camera, this.canvas, this.engine.scene);
 
     // Build world
-    try { new RoomBuilder(this.engine.scene).build(); } catch(e) { console.warn('Room:', e); }
+    try {
+      this.room = new RoomBuilder(this.engine.scene);
+      this.room.build();
+    } catch(e) { console.warn('Room:', e); }
     try {
       this.furniture = new FurnitureBuilder(this.engine.scene, this.controls);
       this.furniture.build();
@@ -111,6 +114,7 @@ class PhysicsLabApp {
       $(id)?.addEventListener('click', () => {
         audioManager.playClick?.();
         this.lighting.setLightingMode(mode);
+        this.room?.setOutdoorLighting?.(mode);
         Object.keys(lightMap).forEach(k => $(k)?.classList.remove('active'));
         $(id)?.classList.add('active');
       });
@@ -129,24 +133,26 @@ class PhysicsLabApp {
 
   _teleport(target) {
     const map = {
-      // POV Pintu Masuk
-      entrance:    { x: 0,    z: 6.8,  y: Math.PI },
-      // POV Guru (Meja Demonstrasi Guru menghadap murid)
-      demo:        { x: 0,    z: -6.4, y: 0 },
-      // POV Murid tiap meja praktikum (menghadap ke guru & papan tulis)
-      table1:      { x: -2.0, z: -3.0, y: Math.PI },
-      table2:      { x: -2.0, z: -1.1, y: Math.PI },
-      table3:      { x: -2.0, z: 0.8,  y: Math.PI },
-      table4:      { x: -2.0, z: 2.7,  y: Math.PI },
-      table5:      { x: -2.0, z: 4.6,  y: Math.PI },
-      table6:      { x: 2.0,  z: -3.0, y: Math.PI },
-      table7:      { x: 2.0,  z: -1.1, y: Math.PI },
-      table8:      { x: 2.0,  z: 0.8,  y: Math.PI },
-      table9:      { x: 2.0,  z: 2.7,  y: Math.PI },
-      table10:     { x: 2.0,  z: 4.6,  y: Math.PI },
+      // POV Pintu Masuk: Berdiri di pintu masuk (z: 6.6), menghadap lurus ke depan ke seluruh ruang lab & meja guru (-Z)
+      entrance:    { x: 0,    z: 6.6,   y: 0,       pitch: 0 },
+      // POV Guru: Berdiri di panggung demonstrasi guru (z: -6.5), menghadap ke depan ke seluruh murid (+Z)
+      demo:        { x: 0,    z: -6.5,  y: Math.PI, pitch: -0.02 },
+      // POV Murid tiap meja praktikum (duduk di bangku menghadap ke meja guru & papan tulis, -Z)
+      // Kolom Kiri: Meja 1 - 5
+      table1:      { x: -2.0, z: -3.15, y: 0,       pitch: -0.05 },
+      table2:      { x: -2.0, z: -1.25, y: 0,       pitch: -0.05 },
+      table3:      { x: -2.0, z: 0.65,  y: 0,       pitch: -0.05 },
+      table4:      { x: -2.0, z: 2.55,  y: 0,       pitch: -0.05 },
+      table5:      { x: -2.0, z: 4.45,  y: 0,       pitch: -0.05 },
+      // Kolom Kanan: Meja 6 - 10
+      table6:      { x: 2.0,  z: -3.15, y: 0,       pitch: -0.05 },
+      table7:      { x: 2.0,  z: -1.25, y: 0,       pitch: -0.05 },
+      table8:      { x: 2.0,  z: 0.65,  y: 0,       pitch: -0.05 },
+      table9:      { x: 2.0,  z: 2.55,  y: 0,       pitch: -0.05 },
+      table10:     { x: 2.0,  z: 4.45,  y: 0,       pitch: -0.05 },
     };
     const t = map[target];
-    if (t) this.controls.teleportTo({x:t.x, z:t.z}, {x:0, y:t.y});
+    if (t) this.controls.teleportTo({ x: t.x, z: t.z }, { x: t.pitch ?? 0, y: t.y });
   }
 
   _setupFps() {

@@ -308,7 +308,29 @@ export class ControllerManager {
   }
 
   teleportTo(pos, lookAngle = { x: 0, y: 0 }) {
-    audioManager.playTeleport();
+    audioManager.playTeleport?.();
+
+    if (this.mode !== 'walk') {
+      this.mode = 'walk';
+      const crosshair = document.getElementById('crosshair');
+      if (crosshair) crosshair.style.display = 'block';
+      const btnWalk = document.getElementById('btn-mode-walk');
+      const btnOrbit = document.getElementById('btn-mode-orbit');
+      if (btnWalk && btnOrbit) {
+        btnWalk.classList.add('active');
+        btnOrbit.classList.remove('active');
+      }
+      const keyHints = document.getElementById('key-hints');
+      if (keyHints) {
+        keyHints.innerHTML = `
+          <div class="kh-row"><kbd>W A S D</kbd><span>Gerak</span></div>
+          <div class="kh-row"><kbd>Mouse</kbd><span>Lihat 360°</span></div>
+          <div class="kh-row"><kbd>Shift</kbd><span>Sprint</span></div>
+          <div class="kh-row"><kbd>Klik</kbd><span>Kunci Kursor</span></div>
+        `;
+      }
+    }
+
     this.isTeleporting = true;
     this.teleportProgress = 0;
     this.teleportStartPos.copy(this.camera.position);
@@ -316,16 +338,6 @@ export class ControllerManager {
 
     this.teleportStartLook.set(this.euler.x, this.euler.y);
     this.teleportEndLook.set(lookAngle.x, lookAngle.y);
-
-    if (this.mode !== 'walk') {
-      this.setMode('walk');
-      const btnWalk = document.getElementById('btn-mode-walk');
-      const btnOrbit = document.getElementById('btn-mode-orbit');
-      if (btnWalk && btnOrbit) {
-        btnWalk.classList.add('active');
-        btnOrbit.classList.remove('active');
-      }
-    }
   }
 
   addCollisionBox(minX, maxX, minZ, maxZ) {
