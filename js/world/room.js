@@ -75,8 +75,8 @@ export class RoomBuilder {
     }
 
     // ============ OUTDOOR SCENERY (GEDUNG VILLA ISOLA UPI VISTA) ============
-    // 1. Manicured campus lawn outside windows (seamless color match with Villa Isola garden)
-    const lawnMat = new THREE.MeshLambertMaterial({ color: 0x3f6212 });
+    // 1. Manicured campus lawn outside windows (seamless color match with Villa Isola garden slope)
+    const lawnMat = new THREE.MeshLambertMaterial({ color: 0x4a7c28 });
     add(new THREE.PlaneGeometry(24, 28), lawnMat, 15.0, -0.01, 0, -Math.PI / 2, 0, 0);
 
     // 2. Exterior paved walkway along windows
@@ -86,7 +86,7 @@ export class RoomBuilder {
     add(new THREE.BoxGeometry(0.12, 0.06, 22), metalMat, 5.66, 0.03, 0);
 
     // 3. Garden hedges along the walkway
-    const hedgeMat = new THREE.MeshLambertMaterial({ color: 0x166534 });
+    const hedgeMat = new THREE.MeshLambertMaterial({ color: 0x1b4332 });
     add(new THREE.BoxGeometry(0.55, 0.70, 18), hedgeMat, 6.0, 0.35, 0);
 
     // 4. Blooming flower shrubs (Bougainvillea UPI campus garden)
@@ -107,9 +107,22 @@ export class RoomBuilder {
       add(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfef08a }), 5.2, 2.52, lz);
     });
 
-    // 6. Iconic Gedung Villa Isola UPI Panoramic Vista
+    // 6. Natural Bandung sky extension backdrop behind photo (matching the photo's sky tone #8eb5dd)
+    this.outdoorSkyMat = new THREE.MeshBasicMaterial({
+      color: 0x8eb5dd,
+      side: THREE.DoubleSide
+    });
+    const wideSkyPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(50, 26),
+      this.outdoorSkyMat
+    );
+    wideSkyPlane.position.set(22.0, 7.5, 0);
+    wideSkyPlane.rotation.y = -Math.PI / 2;
+    roomGroup.add(wideSkyPlane);
+
+    // 7. Authentic Gedung Villa Isola UPI Photo with iconic 'ISOLA' lettering (4:3 aspect ratio)
     const textureLoader = new THREE.TextureLoader();
-    const isolaTexture = textureLoader.load('./textures/isola_upi.jpg', (tex) => {
+    const isolaTexture = textureLoader.load('./textures/isola_upi.png', (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.minFilter = THREE.LinearFilter;
       tex.magFilter = THREE.LinearFilter;
@@ -124,12 +137,12 @@ export class RoomBuilder {
       side: THREE.DoubleSide
     });
 
-    // High-resolution backdrop plane aligned with window viewing angles
+    // Perfectly sized 4:3 billboard aligned with the 5 laboratory windows
     const vistaMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(36, 20.25),
+      new THREE.PlaneGeometry(24.0, 18.0),
       this.outdoorVistaMat
     );
-    vistaMesh.position.set(20.0, 5.8, 0);
+    vistaMesh.position.set(16.5, 6.8, 0);
     vistaMesh.rotation.y = -Math.PI / 2;
     roomGroup.add(vistaMesh);
 
@@ -482,13 +495,15 @@ export class RoomBuilder {
   }
 
   setOutdoorLighting(mode) {
-    if (!this.outdoorVistaMat) return;
     if (mode === 'day') {
-      this.outdoorVistaMat.color.setHex(0xffffff);
+      if (this.outdoorVistaMat) this.outdoorVistaMat.color.setHex(0xffffff);
+      if (this.outdoorSkyMat)   this.outdoorSkyMat.color.setHex(0x8eb5dd);
     } else if (mode === 'lab') {
-      this.outdoorVistaMat.color.setHex(0xf1f5f9);
+      if (this.outdoorVistaMat) this.outdoorVistaMat.color.setHex(0xf1f5f9);
+      if (this.outdoorSkyMat)   this.outdoorSkyMat.color.setHex(0x7ea9d4);
     } else if (mode === 'cinematic') {
-      this.outdoorVistaMat.color.setHex(0x384252);
+      if (this.outdoorVistaMat) this.outdoorVistaMat.color.setHex(0x384252);
+      if (this.outdoorSkyMat)   this.outdoorSkyMat.color.setHex(0x1e293b);
     }
   }
 }
