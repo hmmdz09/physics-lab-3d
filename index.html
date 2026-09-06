@@ -3,180 +3,120 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Laboratorium Fisika 3D Modern — Standar Kemendikbudristek 40-50 Siswa</title>
-  <meta name="description" content="Simulasi dan Eksplorasi 3D Laboratorium Fisika SMA/SMK/MA Kapasitas 40-50 Siswa sesuai Permendikbud No. 24 Tahun 2007 dan Permendikbudristek No. 22 Tahun 2023.">
+  <title>Lab Fisika 3D — Kemendikbud RI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/style.css">
-  
-  <!-- Import Map fallback for standard ESM environments -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
-    }
-  }
-  </script>
 </head>
 <body>
-  <!-- 3D WebGL Canvas Container -->
-  <div id="canvas-container">
-    <canvas id="webgl-canvas"></canvas>
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay">
+    <div class="loading-ring"></div>
+    <div class="loading-text">MEMUAT LABORATORIUM FISIKA 3D...</div>
   </div>
 
-  <!-- Reticle / Crosshair for Walk Mode -->
+  <!-- WebGL Canvas -->
+  <canvas id="webgl-canvas"></canvas>
+
+  <!-- Vignette overlay -->
+  <div id="vignette"></div>
+
+  <!-- Crosshair -->
   <div id="crosshair"></div>
 
-  <!-- Interaction Toast -->
-  <div id="interaction-toast" class="interactive">
-    <span id="toast-icon">🔍</span>
-    <span id="toast-text">Dekati stasiun atau klik objek 3D untuk inspeksi</span>
-  </div>
+  <!-- Scan-line effect -->
+  <div id="scanlines"></div>
 
-  <!-- HUD Master Overlay -->
-  <div class="hud-overlay">
-    <!-- Top Header -->
-    <header class="hud-header interactive">
-      <div class="brand-section">
-        <div class="brand-badge">KEMENDIKBUD RI</div>
-        <div class="brand-title">
-          <h1>Laboratorium Fisika Modern 3D</h1>
-          <p>
-            <span>Standar Permendikbud 24/2007</span>
-            <span class="tag">Kapasitas 40–50 Siswa</span>
-            <span class="tag">Luas 144 m²</span>
-          </p>
+  <!-- TOP HUD ─────────────────────────────── -->
+  <header id="hud-top">
+    <div id="brand">
+      <div id="brand-logo">
+        <span class="logo-icon">⚗️</span>
+        <div>
+          <div id="brand-name">LABORATORIUM FISIKA 3D</div>
+          <div id="brand-sub">Kemendikbudristek · Permendikbud 24/2007</div>
         </div>
       </div>
-
-      <div class="header-stats">
-        <div class="stat-chip">
-          <span class="stat-label">Rasio Ruang / Siswa</span>
-          <span class="stat-value">2.4 m² (Standar)</span>
+      <div id="brand-stats">
+        <div class="stat-pill">
+          <span class="sp-val green">● AKTIF</span>
+          <span class="sp-label">Status Lab</span>
         </div>
-        <div class="stat-chip">
-          <span class="stat-label">Status K3 & Listrik</span>
-          <span class="stat-value" style="color: var(--accent-emerald);">AKTIF & AMAN</span>
+        <div class="stat-pill">
+          <span class="sp-val">50 Siswa</span>
+          <span class="sp-label">Kapasitas</span>
         </div>
-        <div class="stat-chip">
-          <span class="stat-label">Kepatuhan Sarpras</span>
-          <span class="stat-value" style="color: #34d399;">100% SCORE</span>
+        <div class="stat-pill">
+          <span class="sp-val">144 m²</span>
+          <span class="sp-label">Luas Total</span>
         </div>
-      </div>
-
-      <div class="header-actions">
-        <!-- View Mode Switcher -->
-        <div class="mode-pill" id="mode-switcher">
-          <button id="btn-mode-walk" class="active" title="Mode Jelajah Orang Pertama (WASD)">🚶 Jelajah (Walk)</button>
-          <button id="btn-mode-orbit" title="Mode Inspeksi Denah Bebas">🌐 Orbit Denah</button>
+        <div class="stat-pill">
+          <span class="sp-val cyan">100%</span>
+          <span class="sp-label">Compliance</span>
         </div>
-
-        <!-- Lighting Selector -->
-        <div class="lighting-toggles">
-          <button id="light-day" class="lighting-btn active" title="Pencahayaan Alami Jendela">☀️ Siang</button>
-          <button id="light-lab" class="lighting-btn" title="Lampu LED Praktikum">💡 Lab</button>
-          <button id="light-cinematic" class="lighting-btn" title="Mode Gelap / Presentasi">🌙 Teater</button>
-        </div>
-
-        <!-- Audio Mute Button -->
-        <button id="btn-audio" class="btn-glass" title="Suara Ambiens & Efek">
-          <span id="audio-icon">🔊</span>
-        </button>
-
-        <!-- Compliance Audit Button -->
-        <button id="btn-open-compliance" class="btn-glass btn-compliance">
-          <span>📋 Audit Standar Sarpras</span>
-        </button>
-      </div>
-    </header>
-
-    <!-- Bottom Bar Dock -->
-    <footer class="hud-bottom interactive">
-      <!-- Radar Minimap -->
-      <div class="radar-panel">
-        <div class="panel-title">
-          <span>Radar Denah Lab</span>
-          <span class="indicator">LIVE GPS</span>
-        </div>
-        <canvas id="radar-canvas" width="190" height="120"></canvas>
-        <div style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono); width: 100%; display: flex; justify-content: space-between;">
-          <span id="coords-display">X: 0.0m | Z: 0.0m</span>
-          <span>15m × 8m + 24m²</span>
-        </div>
-      </div>
-
-      <!-- Quick Teleport Hotspots Dock -->
-      <nav class="teleport-dock" aria-label="Teleportasi Titik Lab">
-        <span class="dock-label">📍 Teleport:</span>
-        <button class="dock-btn" data-target="demo">👨‍🏫 Meja Guru & Demo</button>
-        <button class="dock-btn" data-target="table1">🔬 Meja Praktikum 1-5</button>
-        <button class="dock-btn" data-target="table6">⚡ Meja Praktikum 6-10</button>
-        <button class="dock-btn" data-target="optics">💡 Bangku Optik & Laser</button>
-        <button class="dock-btn" data-target="oscilloscope">📈 Osiloskop & Listrik</button>
-        <button class="dock-btn" data-target="prep">🚪 Ruang Persiapan</button>
-        <button class="dock-btn" data-target="safety">🧯 Titik K3 & APAR</button>
-      </nav>
-
-      <!-- Navigation Keybindings -->
-      <div class="controls-hint">
-        <div class="hint-row">
-          <span class="key-badge">W</span><span class="key-badge">A</span><span class="key-badge">S</span><span class="key-badge">D</span>
-          <span>Navigasi Jalan Kaki</span>
-        </div>
-        <div class="hint-row">
-          <span class="key-badge">Mouse Look</span>
-          <span>Arah Pandangan 360°</span>
-        </div>
-        <div class="hint-row">
-          <span class="key-badge">Klik Kiri</span>
-          <span>Inspeksi Alat / Tombol</span>
-        </div>
-        <div class="hint-row">
-          <span class="key-badge">Shift</span>
-          <span>Lari Cepat (Sprint)</span>
-        </div>
-      </div>
-    </footer>
-  </div>
-
-  <!-- Interactive Equipment / Station Inspector Modal -->
-  <div id="inspector-modal" class="modal-backdrop">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h2 id="modal-station-title">
-          <span id="modal-station-icon">🔬</span>
-          <span id="modal-station-name">Detail Stasiun Laboratorium</span>
-          <span class="badge" id="modal-station-category">Peralatan Praktikum</span>
-        </h2>
-        <button id="modal-close-btn" class="modal-close-btn" title="Tutup">&times;</button>
-      </div>
-      <div class="modal-body" id="modal-station-content">
-        <!-- Injected dynamically via modal.js -->
       </div>
     </div>
-  </div>
 
-  <!-- Ministry Regulations & Compliance Audit Modal -->
-  <div id="compliance-modal" class="modal-backdrop">
-    <div class="modal-box" style="max-width: 960px;">
-      <div class="modal-header">
-        <h2>
-          <span>🏛️ Dashboard Kepatuhan Sarana & Prasarana</span>
-          <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4);">
-            PERMENDIKBUD NO. 24/2007
-          </span>
-        </h2>
-        <button id="compliance-close-btn" class="modal-close-btn" title="Tutup">&times;</button>
+    <div id="controls-group">
+      <!-- View mode -->
+      <div class="seg-ctrl" id="mode-switcher">
+        <button id="btn-mode-walk" class="seg-btn active">🚶 Walk</button>
+        <button id="btn-mode-orbit" class="seg-btn">🌐 Orbit</button>
       </div>
-      <div class="modal-body" id="compliance-modal-content">
-        <!-- Injected dynamically via compliance.js -->
+      <!-- Lighting -->
+      <div class="seg-ctrl">
+        <button id="light-day" class="seg-btn active">☀️ Siang</button>
+        <button id="light-lab" class="seg-btn">💡 Lab</button>
+        <button id="light-cinematic" class="seg-btn">🌙 Teater</button>
       </div>
+      <button id="btn-audio" class="icon-btn"><span id="audio-icon">🔊</span></button>
     </div>
+  </header>
+
+  <!-- BOTTOM BAR ────────────────────────────── -->
+  <footer id="hud-bottom">
+    <!-- Radar -->
+    <div id="radar-wrap">
+      <div class="panel-label">📡 DENAH LAB <span class="live-dot"></span></div>
+      <canvas id="radar-canvas" width="180" height="112"></canvas>
+      <div id="coords-display" class="mono">X: 0.0 | Z: 0.0</div>
+    </div>
+
+    <!-- Teleport dock -->
+    <nav id="teleport-dock">
+      <span class="dock-label">⚡ TELEPORT</span>
+      <button class="tp-btn" data-target="demo">👨‍🏫 Guru & Demo</button>
+      <button class="tp-btn" data-target="table1">🔬 Meja 1–5</button>
+      <button class="tp-btn" data-target="table6">⚡ Meja 6–10</button>
+      <button class="tp-btn" data-target="optics">🌈 Optik & Laser</button>
+      <button class="tp-btn" data-target="oscilloscope">📈 Osiloskop</button>
+      <button class="tp-btn" data-target="prep">🚪 Persiapan</button>
+      <button class="tp-btn" data-target="safety">🧯 K3 & APAR</button>
+    </nav>
+
+    <!-- Key hints -->
+    <div id="key-hints">
+      <div class="kh-row"><kbd>W A S D</kbd><span>Gerak</span></div>
+      <div class="kh-row"><kbd>Mouse</kbd><span>Lihat 360°</span></div>
+      <div class="kh-row"><kbd>Shift</kbd><span>Sprint</span></div>
+      <div class="kh-row"><kbd>Klik</kbd><span>Inspeksi</span></div>
+    </div>
+  </footer>
+
+  <!-- INFO TOAST (dekati objek) ─────────────── -->
+  <div id="info-toast">
+    <span id="toast-icon">💡</span>
+    <span id="toast-text">Jelajahi laboratorium fisika...</span>
   </div>
 
-  <!-- Main JavaScript Application -->
+  <!-- STATION LABEL (floating) ──────────────── -->
+  <div id="station-label">
+    <div id="sl-name"></div>
+    <div id="sl-desc"></div>
+  </div>
+
   <script type="module" src="./js/main.js"></script>
 </body>
 </html>

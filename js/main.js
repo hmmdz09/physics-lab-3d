@@ -7,188 +7,271 @@ import { FurnitureBuilder } from './world/furniture.js';
 import { EquipmentBuilder } from './world/equipment.js';
 import { SafetyBuilder } from './world/safety.js';
 import { MarkerManager } from './world/markers.js';
-import { ModalManager } from './ui/modal.js';
-import { ComplianceManager } from './ui/compliance.js';
-import { HudManager } from './ui/hud.js';
 import { audioManager } from './ui/audio.js';
 
-class PhysicsLabApplication {
+class PhysicsLabApp {
   constructor() {
     this.canvas = document.getElementById('webgl-canvas');
-    this._prevTime = performance.now();
-    this._frameCount = 0;
-    this.currentHoverData = null;
+    this._prev = performance.now();
+    this._frame = 0;
+    this._nearbyData = null;
 
-    // Show loading overlay
-    this._showLoading(true);
-
+    this._showLoad(true);
     try {
-      this.init();
-      this._showLoading(false);
-    } catch (err) {
-      console.error('[PhysicsLab] Init failed:', err);
-      this._showError(err.message || String(err));
+      this._init();
+      this._showLoad(false);
+    } catch(e) {
+      console.error('[Lab]', e);
+      this._showLoad(false);
     }
   }
 
-  _showLoading(visible) {
+  _showLoad(v) {
     const el = document.getElementById('loading-overlay');
-    if (el) el.style.display = visible ? 'flex' : 'none';
+    if (el) el.style.display = v ? 'flex' : 'none';
   }
 
-  _showError(msg) {
-    this._showLoading(false);
-    const div = document.createElement('div');
-    div.style.cssText =
-      'position:fixed;inset:0;background:#0a0f1d;display:flex;flex-direction:column;' +
-      'align-items:center;justify-content:center;z-index:9999;color:#fff;font-family:monospace;padding:2rem;';
-    div.innerHTML = `
-      <div style="font-size:2.5rem;margin-bottom:1rem">⚠️</div>
-      <div style="font-size:1.1rem;color:#ef4444;margin-bottom:.5rem">Gagal memuat scene 3D</div>
-      <div style="font-size:.8rem;color:#94a3b8;max-width:600px;text-align:center">${msg}</div>
-      <button onclick="location.reload()" style="margin-top:1.5rem;padding:.6rem 1.5rem;
-        background:#2563eb;color:#fff;border:none;border-radius:.5rem;cursor:pointer;font-size:1rem">
-        🔄 Coba Lagi
-      </button>`;
-    document.body.appendChild(div);
-  }
-
-  init() {
-    this.engine = new EngineScene(this.canvas);
+  _init() {
+    this.engine   = new EngineScene(this.canvas);
     this.lighting = new LightingSystem(this.engine.scene);
     this.controls = new ControllerManager(this.engine.camera, this.canvas, this.engine.scene);
 
-    // Build world — each wrapped so one failure doesn't kill everything
-    this._safeRun('RoomBuilder',      () => new RoomBuilder(this.engine.scene).build());
-    this.furniture = this._safeRun('FurnitureBuilder', () => {
-      const f = new FurnitureBuilder(this.engine.scene, this.controls);
-      f.build(); return f;
-    });
-    this.equipment = this._safeRun('EquipmentBuilder', () => {
-      const e = new EquipmentBuilder(this.engine.scene);
-      e.build(); return e;
-    });
-    this._safeRun('SafetyBuilder',    () => new SafetyBuilder(this.engine.scene).build());
+    // Build world
+    try { new RoomBuilder(this.engine.scene).build(); } catch(e) { console.warn('Room:', e); }
+    try {
+      this.furniture = new FurnitureBuilder(this.engine.scene, this.controls);
+      this.furniture.build();
+    } catch(e) { console.warn('Furniture:', e); }
+    try {
+      this.equipment = new EquipmentBuilder(this.engine.scene);
+      this.equipment.build();
+    } catch(e) { console.warn('Equipment:', e); }
+    try { new SafetyBuilder(this.engine.scene).build(); } catch(e) { console.warn('Safety:', e); }
 
-    // Markers & UI
+    // Markers
     this.markers = new MarkerManager(this.engine.scene, this.engine.camera);
-    this._setupHotspots();
+    this._addHotspots();
 
-    this.modal      = new ModalManager();
-    this.compliance = new ComplianceManager();
-    this.hud        = new HudManager(this.controls, this.lighting, this.modal);
+    // UI refs
+    this.fpsEl        = null;
+    this.toast        = document.getElementById('info-toast');
+    this.toastText    = document.getElementById('toast-text');
+    this.toastIcon    = document.getElementById('toast-icon');
+    this.stationLabel = document.getElementById('station-label');
+    this.slName       = document.getElementById('sl-name');
+    this.slDesc       = document.getElementById('sl-desc');
+    this.coordsEl     = document.getElementById('coords-display');
+    this.radarCtx     = document.getElementById('radar-canvas')?.getContext('2d');
 
-    this._setupFpsCounter();
-    this._initInteraction();
-    this._startProximityCheck();
-    this.animate();
+    this._bindButtons();
+    this._setupFps();
+    setInterval(() => this._nearbyCheck(), 220);
+    this._animate();
   }
 
-  _safeRun(name, fn) {
-    try { return fn(); }
-    catch (e) { console.warn(`[PhysicsLab] ${name} error:`, e); return null; }
+  _addHotspots() {
+    const add = (id, title, pos, desc, icon = '🔬') =>
+      this.markers.addMarker(id, title, pos, { title, desc, icon });
+
+    add('demo',        'Meja Demonstrasi Guru',     {x:0,    y:1.12,z:-5.8}, 'Panggung elevasi 15cm · catu daya sentral · wastafel demo · 2.8m × 0.9m', '👨‍🏫');
+    add('mechanics',   'Rel Dinamika & Ticker Timer',{x:-2,   y:1.12,z:-3.8}, 'Hukum Newton II (F=ma) · GLB & GLBB · Pita ketik 50Hz · Beban gantung variabel', '⚙️');
+    add('oscilloscope','Osiloskop Digital + PSU',   {x:-2,   y:1.12,z:1.9 }, 'Dual Channel · 0–12V DC · Ukur frekuensi, periode & Vp-p · AC/DC waveform', '📈');
+    add('optics',      'Bangku Optik & Laser Prisma',{x:-2,  y:1.12,z:3.8 }, 'Hukum Snellius · Dispersi cahaya prisma · Sudut deviasi minimum · Laser merah', '🌈');
+    add('thermo',      'Kalorimeter Joule',          {x:2,    y:1.12,z:3.8 }, 'Asas Black · Kalor jenis tembaga/aluminium/kuningan · Tara kalor mekanik', '🌡️');
+    add('prep',        'Ruang Persiapan Guru',       {x:-7.5, y:1.12,z:0  }, '24 m² · 4 lemari kaca terkunci · Kit Mekanika, Optik, Listrik, Termofisika', '🚪');
+    add('apar',        'Pos K3 & APAR ABC 6kg',      {x:3.2,  y:1.4, z:7.0}, 'APAR kimia kering ABC · P3K · Eye Wash · E-Stop master · Standar Kemendikbud', '🧯');
+    add('estop',       'Master Emergency Power Off', {x:3.2,  y:1.5, z:-7.2},'Tombol jamur merah · Putus daya ke 10 meja (50 siswa) seketika · Tipe NC', '⚡');
   }
 
-  _setupHotspots() {
-    const M = (id, title, pos, data) => this.markers.addMarker(id, title, pos, data);
-    M('demo',        'Meja Demo Guru',        {x:0,    y:1.12,z:-5.8}, {type:'demo_station', name:'Meja Demonstrasi Guru', capacity:'Instruktur', specs:'Meja demo 2.8m di atas panggung, instalasi listrik sentral.'});
-    M('mechanics',   'Kit Mekanika',           {x:-2.0, y:1.12,z:-3.8}, {id:'mechanics',  type:'equipment', name:'Rel Dinamika & Ticker Timer',  category:'Kit Mekanika', description:'Eksperimen Hukum II Newton F=ma, GLB, GLBB dengan pita ketik 50Hz.'});
-    M('oscilloscope','Osiloskop & Listrik',    {x:-2.0, y:1.12,z:1.9 }, {id:'oscilloscope',type:'equipment', name:'Osiloskop Digital Dual Channel',category:'Kit Listrik', description:'Visualisasi gelombang AC/DC, pengukuran frekuensi dan Vp-p.'});
-    M('optics',      'Bangku Optik & Laser',   {x:-2.0, y:1.12,z:3.8 }, {id:'optics',     type:'equipment', name:'Bangku Optik & Percobaan Prisma',category:'Kit Optik', description:'Pembiasan Snellius, dispersi cahaya prisma, sudut deviasi minimum.'});
-    M('thermo',      'Kalorimeter Joule',      {x:2.0,  y:1.12,z:3.8 }, {id:'thermo',     type:'equipment', name:'Kalorimeter Joule & Termofisika', category:'Kit Termofisika', description:'Asas Black, kalor jenis tembaga/aluminium/kuningan.'});
-    M('prep',        'Ruang Persiapan',         {x:-7.5, y:1.12,z:0   }, {type:'storage_cabinet', name:'Ruang Persiapan Guru', capacity:'24 m²', specs:'4 lemari kaca terkunci untuk kit Mekanika, Optik, Listrik, Termofisika.'});
-    M('apar',        'Titik K3 & APAR',         {x:3.2,  y:1.4, z:7.0 }, {id:'apar', type:'safety', name:'APAR ABC 6kg', category:'K3 Wajib', description:'Tabung pemadam serbuk kimia kering untuk kebakaran listrik dan bahan kimia.'});
-    M('estop',       'Saklar Darurat Listrik',  {x:3.2,  y:1.5, z:-7.2}, {id:'emergency_stop', type:'safety', name:'Master Emergency Power Cut-off', category:'Proteksi Kelistrikan', description:'Pemutus daya seketika ke 10 meja praktikum (50 siswa).'});
-  }
+  _bindButtons() {
+    const $ = id => document.getElementById(id);
 
-  _initInteraction() {
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'KeyE' && this.currentHoverData && !this.modal?.isOpen()) {
-        audioManager.playClick?.();
-        this.modal?.open(this.currentHoverData);
-      }
+    $('btn-mode-walk')?.addEventListener('click', () => {
+      audioManager.playClick?.();
+      this.controls.setMode('walk');
+      $('btn-mode-walk')?.classList.add('active');
+      $('btn-mode-orbit')?.classList.remove('active');
+    });
+    $('btn-mode-orbit')?.addEventListener('click', () => {
+      audioManager.playClick?.();
+      this.controls.setMode('orbit');
+      $('btn-mode-orbit')?.classList.add('active');
+      $('btn-mode-walk')?.classList.remove('active');
     });
 
-    this.canvas.addEventListener('click', () => {
+    $('btn-audio')?.addEventListener('click', () => {
       audioManager.init?.();
-      if (this.currentHoverData && !this.modal?.isOpen()) {
-        this.modal?.open(this.currentHoverData);
-      }
+      const muted = audioManager.toggleMute?.();
+      const icon = $('audio-icon');
+      if (icon) icon.textContent = muted ? '🔇' : '🔊';
+    });
+
+    // Lighting
+    const lightMap = { 'light-day':'day', 'light-lab':'lab', 'light-cinematic':'cinematic' };
+    Object.entries(lightMap).forEach(([id, mode]) => {
+      $(id)?.addEventListener('click', () => {
+        audioManager.playClick?.();
+        this.lighting.setLightingMode(mode);
+        Object.keys(lightMap).forEach(k => $(k)?.classList.remove('active'));
+        $(id)?.classList.add('active');
+      });
+    });
+
+    // Teleport dock
+    document.querySelectorAll('.tp-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        audioManager.init?.();
+        this._teleport(btn.dataset.target);
+      });
     });
   }
 
-  _startProximityCheck() {
-    setInterval(() => {
-      if (this.modal?.isOpen()) return;
-      const cp = this.engine.camera.position;
-      let nearest = null, minD = 3.2;
-      for (const m of (this.markers?.markers ?? [])) {
-        const mp = m.group.position;
-        const d = Math.hypot(cp.x - mp.x, cp.z - mp.z);
-        if (d < minD) { minD = d; nearest = m.group.userData; }
-      }
-      const cross = document.getElementById('crosshair');
-      if (nearest) {
-        this.currentHoverData = nearest.targetData ?? nearest;
-        this.hud?.showToast(`Tekan [E] atau Klik: ${nearest.title ?? this.currentHoverData?.name}`);
-        cross?.classList.add('interactable');
-      } else {
-        this.currentHoverData = null;
-        this.hud?.hideToast();
-        cross?.classList.remove('interactable');
-      }
-    }, 200);
+  _teleport(target) {
+    const map = {
+      demo:        {x:0,    z:-4.0, y:Math.PI},
+      table1:      {x:-0.5, z:-2.5, y:-Math.PI/2},
+      table6:      {x:0.5,  z:2.5,  y:Math.PI/2},
+      optics:      {x:-0.7, z:3.8,  y:-Math.PI/2},
+      oscilloscope:{x:-0.7, z:1.9,  y:-Math.PI/2},
+      prep:        {x:-7.0, z:0,    y:-Math.PI/2},
+      safety:      {x:2.5,  z:6.5,  y:0},
+    };
+    const t = map[target];
+    if (t) this.controls.teleportTo({x:t.x, z:t.z}, {x:0, y:t.y});
   }
 
-  _setupFpsCounter() {
+  _setupFps() {
     const el = document.createElement('div');
     el.id = 'fps-counter';
-    el.style.cssText =
-      'position:fixed;bottom:16px;right:20px;background:rgba(0,0,0,0.6);' +
-      'color:#38bdf8;font:bold 11px monospace;padding:4px 10px;border-radius:6px;' +
-      'z-index:200;pointer-events:none;border:1px solid rgba(56,189,248,0.3)';
     document.body.appendChild(el);
-    this._fpsEl = el;
+    this.fpsEl = el;
   }
 
-  animate() {
-    requestAnimationFrame(() => this.animate());
+  _nearbyCheck() {
+    const cam = this.engine.camera.position;
+    let near = null, minD = 3.0;
+    for (const m of (this.markers?.markers ?? [])) {
+      const p = m.group.position;
+      const d = Math.hypot(cam.x - p.x, cam.z - p.z);
+      if (d < minD) { minD = d; near = m.group.userData; }
+    }
 
+    const cross = document.getElementById('crosshair');
+    if (near?.targetData) {
+      const d = near.targetData;
+      this._nearbyData = d;
+      // Show side label
+      if (this.slName)  this.slName.textContent  = d.icon + '  ' + d.title;
+      if (this.slDesc)  this.slDesc.textContent  = d.desc;
+      this.stationLabel?.classList.add('visible');
+      // Toast
+      if (this.toastIcon)  this.toastIcon.textContent  = d.icon ?? '💡';
+      if (this.toastText)  this.toastText.textContent  = d.title;
+      this.toast?.classList.add('visible');
+      cross?.classList.add('interactable');
+    } else {
+      this._nearbyData = null;
+      this.stationLabel?.classList.remove('visible');
+      this.toast?.classList.remove('visible');
+      cross?.classList.remove('interactable');
+    }
+  }
+
+  _drawRadar() {
+    const ctx = this.radarCtx;
+    if (!ctx) return;
+    const W = 180, H = 112;
+    ctx.fillStyle = '#040810'; ctx.fillRect(0, 0, W, H);
+
+    const ox = W * 0.64, oy = H * 0.5, sc = 5.8;
+
+    // Main hall
+    ctx.fillStyle = '#0d1627';
+    ctx.fillRect(ox - 4*sc, oy - 7.5*sc, 8*sc, 15*sc);
+    ctx.strokeStyle = '#1e3a5f'; ctx.lineWidth = 1;
+    ctx.strokeRect(ox - 4*sc, oy - 7.5*sc, 8*sc, 15*sc);
+
+    // Prep room
+    ctx.fillStyle = '#0a1220';
+    ctx.fillRect(ox - 10*sc, oy - 2*sc, 6*sc, 4*sc);
+    ctx.strokeStyle = '#1e3a5f';
+    ctx.strokeRect(ox - 10*sc, oy - 2*sc, 6*sc, 4*sc);
+
+    // Tables
+    ctx.fillStyle = 'rgba(37,99,235,0.7)';
+    for (const xc of [-2,2]) {
+      for (const zr of [-3.8,-1.9,0,1.9,3.8]) {
+        ctx.fillRect(ox+(xc-1)*sc, oy+(zr-.5)*sc, 2*sc, 1*sc);
+      }
+    }
+
+    // Demo table
+    ctx.fillStyle = 'rgba(5,150,105,0.8)';
+    ctx.fillRect(ox-1.4*sc, oy-6.5*sc, 2.8*sc, sc);
+
+    // APAR
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath(); ctx.arc(ox+3.2*sc, oy+7*sc, 3, 0, Math.PI*2); ctx.fill();
+
+    // Camera
+    const cam = this.engine.camera.position;
+    const yaw = this.controls?.euler?.y ?? 0;
+    const px = ox + cam.x*sc, py = oy + cam.z*sc;
+
+    ctx.fillStyle = 'rgba(56,189,248,0.12)';
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.arc(px, py, 18, -yaw-Math.PI/2-.5, -yaw-Math.PI/2+.5);
+    ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+
+    // Grid
+    ctx.strokeStyle = 'rgba(56,189,248,0.04)'; ctx.lineWidth = .5;
+    for (let x = 0; x < W; x += 15) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 15) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  }
+
+  _animate() {
+    requestAnimationFrame(() => this._animate());
     const now = performance.now();
-    const delta = Math.min((now - this._prevTime) / 1000, 0.05);
-    this._prevTime = now;
-    const elapsed = this.engine.clock.getElapsedTime();
+    const dt  = Math.min((now - this._prev) / 1000, 0.05);
+    this._prev = now;
+    const t = this.engine.clock.getElapsedTime();
 
-    this.controls?.update(delta);
-    this.equipment?.update(delta);
-    this.markers?.update(delta, elapsed);
-    this.hud?.update(this.engine.camera.position, this.controls?.euler ?? {y:0});
+    this.controls?.update(dt);
+    this.equipment?.update(dt);
+    this.markers?.update(dt, t);
+
+    // Coords
+    const cam = this.engine.camera.position;
+    if (this.coordsEl)
+      this.coordsEl.textContent = `X: ${cam.x.toFixed(1)} | Z: ${cam.z.toFixed(1)}`;
+
+    // Radar every 5 frames
+    this._frame++;
+    if (this._frame % 5 === 0) this._drawRadar();
+
     this.engine.render();
 
-    // FPS display every 30 frames
-    this._frameCount++;
-    if (this._frameCount % 30 === 0 && this._fpsEl) {
-      const fps = Math.round(1 / delta);
-      this._fpsEl.textContent = `${fps} FPS`;
-      this._fpsEl.style.color = fps >= 50 ? '#10b981' : fps >= 30 ? '#f59e0b' : '#ef4444';
+    // FPS every 30 frames
+    if (this._frame % 30 === 0 && this.fpsEl) {
+      const fps = Math.round(1/dt);
+      this.fpsEl.textContent = `${fps} FPS`;
+      this.fpsEl.style.color = fps >= 50 ? '#10b981' : fps >= 30 ? '#f59e0b' : '#ef4444';
     }
   }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  // Minimal WebGL check before starting
-  const testCanvas = document.createElement('canvas');
-  const gl = testCanvas.getContext('webgl2') || testCanvas.getContext('webgl');
+  const gl = document.createElement('canvas').getContext('webgl2')
+          || document.createElement('canvas').getContext('webgl');
   if (!gl) {
-    document.body.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-        height:100vh;background:#0a0f1d;color:#fff;font-family:sans-serif;text-align:center;padding:2rem;">
-        <div style="font-size:3rem">🖥️</div>
-        <h2 style="color:#ef4444">WebGL Tidak Tersedia</h2>
-        <p style="color:#94a3b8">Browser kamu tidak mendukung WebGL.<br>
-        Coba gunakan Chrome/Firefox terbaru dan aktifkan hardware acceleration.</p>
-      </div>`;
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#050810;color:#38bdf8;font-family:Orbitron,monospace;font-size:1rem;text-align:center;padding:2rem">WebGL tidak tersedia.<br>Aktifkan hardware acceleration di browser.</div>';
     return;
   }
-  new PhysicsLabApplication();
+  new PhysicsLabApp();
 });
